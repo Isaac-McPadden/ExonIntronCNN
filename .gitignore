@@ -172,8 +172,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-<<<<<<< HEAD
-=======
 
 # IntronExon Repo
 
@@ -188,4 +186,3 @@ Models/*
 !../Models/Best Models/*
 
 venv/
->>>>>>> master
