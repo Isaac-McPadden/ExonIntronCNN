@@ -172,3 +172,20 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+<<<<<<< HEAD
+=======
+
+# IntronExon Repo
+
+Datasets/*
+!../Datasets/
+!/Datasets/FinalIntronExonDF.csv
+
+IntronExon Notebook Backup/
+
+Models/*
+!Models/Best Models/
+!../Models/Best Models/*
+
+venv/
+>>>>>>> master
