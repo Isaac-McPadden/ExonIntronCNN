@@ -176,12 +176,14 @@ cython_debug/
 # IntronExon Repo
 
 Datasets/*
+!Datasets/
 !../Datasets/
 !/Datasets/FinalIntronExonDF.csv
 
 IntronExon Notebook Backup/
 
 Models/*
+!Models/
 !Models/Best Models/
 !../Models/Best Models/*
 
