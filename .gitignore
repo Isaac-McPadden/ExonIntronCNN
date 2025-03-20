@@ -186,5 +186,11 @@ Models/*
 !Models/
 !Models/Best Models/
 !../Models/Best Models/*
+!Models/checkpoints/
+Models/checkpoints/*
+!Models/Training Data/
+Models/Training Data/*
+!Models/Tuning Data/
+Models/Tuning Data/*
 
 venv/

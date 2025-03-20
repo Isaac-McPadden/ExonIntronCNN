@@ -16,18 +16,24 @@ The fasta file is 'Genome sequence (GRCh38.p14)' with ALL as the 'regions' and c
 I unzipped and saved it as 'chr_genome.fa'
 
 
+Repository Structure
 
-Currently restructuring the project because the scope has expanded as I've working on it
+There are 4 main folders: Datasets, Models, Notebooks, and Other Information
+
+Datasets only contains FinalIntronExonDF.csv and nothing else on github because the datasets are big
+
+Models has the Best Models folder which is the best models (by validation F1 score) I've managed to train so far. It also has the checkpoints subfolder which is used a lot by the code.  I move checkpoints into a Training Data subfolder.  For tuning trials, I have a Tuning Data subfolder. I have them in the repo but they are empty.
+
+Notebooks is split into Curated Notebooks and Experimentation Notebooks. Curated Notebooks are streamlined step by step code cells with as much of the mess from testing stuff kept out.  Experimentation Notebooks is the Notebooks I was actually working in and using to create messes.
+
+Other Information is other useful info for which I did not have a better spot.
+
+
 
 To do:
 
-Fix pathnames in notebooks that are not going to work since I've moved things around
-
-Get a curated notebook for the model thusfar
-
-Update README so it actually describes the project repo
-
 Build out an experiment plan rather than continue with the throw-stuff-out-and-see-what-sticks method (F1 PB of 0.6352)
+- currently have a general outline
 
 Build infrastructure to make experiment streamlined and self documenting
 
