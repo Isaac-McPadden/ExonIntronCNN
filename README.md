@@ -18,11 +18,13 @@ I unzipped and saved it as 'chr_genome.fa'
 
 Repository Structure
 
-There are 4 main folders: Datasets, Models, Notebooks, and Other Information
+There are 5 main folders: Datasets, Models, Modules, Notebooks, and Other Information
 
 Datasets only contains FinalIntronExonDF.csv and nothing else on github because the datasets are big
 
 Models has the Best Models folder which is the best models (by validation F1 score) I've managed to train so far. It also has the checkpoints subfolder which is used a lot by the code.  I move checkpoints into a Training Data subfolder.  For tuning trials, I have a Tuning Data subfolder. I have them in the repo but they are empty.
+
+Modules is where I am putting .py collections of functions for importing to reduce repetitive clutter in new notebooks.
 
 Notebooks is split into Curated Notebooks and Experimentation Notebooks. Curated Notebooks are streamlined step by step code cells with as much of the mess from testing stuff kept out.  Experimentation Notebooks is the Notebooks I was actually working in and using to create messes.
 
