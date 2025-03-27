@@ -20,7 +20,8 @@ from pyfaidx import Fasta
 import sys
 import os
 
-
+# datasets_path = "../../Datasets/"
+# models_path = "../../Models/"
 '''
 Run the code below in notebooks to get them to add modules to the path
 '''
