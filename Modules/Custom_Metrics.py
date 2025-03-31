@@ -147,6 +147,160 @@ class CustomNoBackgroundF1Score(metrics.Metric):
             'threshold': self.threshold,
         })
         return config
+    
+@utils.register_keras_serializable()
+class CustomNoBackgroundF1Score(metrics.Metric):
+    def __init__(self, num_classes, average='weighted', threshold=0.5, name='no_background_f1', **kwargs):
+        """
+        Custom F1 score metric that only considers non-dominant classes.
+        
+        This version is designed for multi-encoded labels where:
+          - If the background column (index 0) is present, it is removed.
+          - If the background column has already been removed, the labels are used as is.
+        
+        Args:
+            num_classes (int): Total number of classes when the background column is present.
+            average (str): 'weighted' (default) to weight by support or 'macro' for a simple average.
+            threshold (float): Threshold on y_pred to decide a positive (default 0.5).
+            name (str): Name of the metric.
+            **kwargs: Additional keyword arguments.
+        """
+        super(CustomNoBackgroundF1Score, self).__init__(name=name, **kwargs)
+        self.num_classes = num_classes
+        self.threshold = threshold
+        if average not in ['weighted', 'macro']:
+            raise ValueError("average must be 'weighted' or 'macro'")
+        self.average = average
+
+        # State variables for each class (we update indices 1... if background is present)
+        self.true_positives = self.add_weight(
+            name='tp', shape=(num_classes,), initializer='zeros', dtype=tf.float32
+        )
+        self.false_positives = self.add_weight(
+            name='fp', shape=(num_classes,), initializer='zeros', dtype=tf.float32
+        )
+        self.false_negatives = self.add_weight(
+            name='fn', shape=(num_classes,), initializer='zeros', dtype=tf.float32
+        )
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        """
+        Updates the metric state.
+        
+        Args:
+            y_true: Tensor of shape (batch_size, num_classes) or (batch_size, num_classes-1).
+            y_pred: Tensor of shape (batch_size, num_classes) or (batch_size, num_classes-1).
+            sample_weight: Optional sample weights.
+        """
+        # Use dynamic reshape based on the actual number of channels.
+        y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
+        y_pred = tf.reshape(y_pred, [-1, tf.shape(y_pred)[-1]])
+
+        # Check whether the background column is present.
+        # Try a static check first.
+        num_channels = y_true.shape[-1]
+        if num_channels is not None:
+            if num_channels == self.num_classes:
+                # Background present: remove the first column.
+                y_true_non_dominant = y_true[:, 1:]
+                y_pred_non_dominant = y_pred[:, 1:]
+            elif num_channels == self.num_classes - 1:
+                # Background already removed.
+                y_true_non_dominant = y_true
+                y_pred_non_dominant = y_pred
+            else:
+                raise ValueError(
+                    "Unexpected number of channels in y_true: got {}. Expected {} or {}."
+                    .format(num_channels, self.num_classes, self.num_classes - 1)
+                )
+        else:
+            # Fallback: use dynamic check with tf.cond.
+            n = tf.shape(y_true)[-1]
+            def remove_background():
+                return y_true[:, 1:], y_pred[:, 1:]
+            def pass_through():
+                return y_true, y_pred
+            y_true_non_dominant, y_pred_non_dominant = tf.cond(
+                tf.equal(n, self.num_classes),
+                remove_background,
+                pass_through
+            )
+
+        # For ground truth: treat a class as positive only if its value is exactly 1.
+        one_value = tf.cast(1.0, dtype=y_true_non_dominant.dtype)
+        y_true_bin = tf.cast(tf.equal(y_true_non_dominant, one_value), tf.int32)
+        # For predictions: apply thresholding.
+        y_pred_bin = tf.cast(y_pred_non_dominant >= self.threshold, tf.int32)
+
+        # Optionally apply sample weighting.
+        if sample_weight is not None:
+            sample_weight = tf.cast(sample_weight, tf.int32)
+            sample_weight = tf.reshape(sample_weight, (-1, 1))
+            y_true_bin = y_true_bin * sample_weight
+            y_pred_bin = y_pred_bin * sample_weight
+
+        # Compute per-class true positives, false positives, and false negatives.
+        tp = tf.reduce_sum(tf.cast(y_true_bin * y_pred_bin, tf.float32), axis=0)
+        fp = tf.reduce_sum(tf.cast((1 - y_true_bin) * y_pred_bin, tf.float32), axis=0)
+        fn = tf.reduce_sum(tf.cast(y_true_bin * (1 - y_pred_bin), tf.float32), axis=0)
+
+        # Our state variables have length num_classes.
+        # If background is present, update indices 1...; otherwise, pad with a zero at index 0.
+        zeros = tf.zeros([1], dtype=tf.float32)
+        if num_channels is not None and num_channels == self.num_classes:
+            tp_update = tf.concat([zeros, tp], axis=0)
+            fp_update = tf.concat([zeros, fp], axis=0)
+            fn_update = tf.concat([zeros, fn], axis=0)
+        else:
+            # When background is removed, assume that our state variables' index 0 is not used.
+            # Prepend a zero so that indices match up.
+            tp_update = tf.concat([zeros, tp], axis=0)
+            fp_update = tf.concat([zeros, fp], axis=0)
+            fn_update = tf.concat([zeros, fn], axis=0)
+
+        self.true_positives.assign_add(tp_update)
+        self.false_positives.assign_add(fp_update)
+        self.false_negatives.assign_add(fn_update)
+
+    def result(self):
+        """
+        Computes the F1 score over the non-dominant classes.
+        """
+        # Use only non-dominant classes (indices 1...).
+        tp = self.true_positives[1:]
+        fp = self.false_positives[1:]
+        fn = self.false_negatives[1:]
+
+        precision = tf.math.divide_no_nan(tp, tp + fp)
+        recall = tf.math.divide_no_nan(tp, tp + fn)
+        f1 = tf.math.divide_no_nan(2 * precision * recall, precision + recall)
+
+        if self.average == 'weighted':
+            support = tp + fn
+            weighted_f1 = tf.reduce_sum(f1 * support) / (tf.reduce_sum(support) + tf.keras.backend.epsilon())
+            return weighted_f1
+        else:  # macro
+            return tf.reduce_mean(f1)
+
+    def reset_states(self):
+        """
+        Resets all of the metric state variables.
+        """
+        for v in self.variables:
+            v.assign(tf.zeros_like(v))
+
+    def get_config(self):
+        """
+        Returns the configuration of the metric, so it can be recreated later.
+        """
+        config = super(CustomNoBackgroundF1Score, self).get_config()
+        config.update({
+            'num_classes': self.num_classes,
+            'average': self.average,
+            'threshold': self.threshold,
+        })
+        return config
+
 
 @utils.register_keras_serializable()
 class CustomConditionalF1Score(metrics.Metric):

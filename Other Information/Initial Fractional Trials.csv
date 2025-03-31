@@ -1,11 +1,13 @@
-Trial,Smoothing Type,Background,Early Rewarding,Augmentation Factor,Window Shift,Dilation,Attention,Regularization
-1,Custom smoothing,Included,Enabled,1x,Incremental,Standard,None,No
-2,Binary (no smoothing),Included,N/A,1x,Incremental,Standard,None,No
-3,Binary label smoothing,Included,N/A,1x,Incremental,Standard,None,No
-4,Custom smoothing,Removed,Enabled,1x,Incremental,Standard,None,No
-5,Binary label smoothing,Removed,N/A,1x,Incremental,Standard,None,No
-6,Custom smoothing,Included,Disabled,5x,Highly Mixed,Less/Slower,Masked attention at the beginning,Yes
-7,Custom smoothing,Removed,Enabled,5x,Highly Mixed,Less/Slower,Pooling + attention at end,Yes
-8,Binary (no smoothing),Included,N/A,10x,Highly Mixed,Less/Slower,Attention after concatenation,Yes
-9,Binary label smoothing,Removed,N/A,10x,Incremental,Less/Slower,Pooling + attention at end,Yes
-10,Custom smoothing,Removed,Disabled,10x,Highly Mixed,Standard,Masked attention at the beginning,No
+Trial,Smoothing,Background,Early Rewarding,Aug+Shift,Dilation,Attention
+1,No Smoothing,Included,Disabled,1x+Incremental,Standard,None
+2,No Smoothing,Included,Disabled,10x+Highly Mixed,Less/Slower,Some
+3,No Smoothing,Removed,Disabled,10x+Highly Mixed,Less/Slower,None
+4,No Smoothing,Removed,Disabled,1x+Incremental,Standard,Some
+5,Custom Smoothing,Included,Enabled,10x+Highly Mixed,Standard,Some
+6,Custom Smoothing,Included,Disabled,1x+Incremental,Less/Slower,None
+7,Custom Smoothing,Removed,Enabled,1x+Incremental,Less/Slower,Some
+8,Custom Smoothing,Removed,Disabled,10x+Highly Mixed,Standard,None
+9,Proper Smoothing,Included,Disabled,1x+Incremental,Standard,None
+10,Proper Smoothing,Removed,Disabled,1x+Incremental,Standard,None
+11,No Smoothing,Included,Disabled,5x+Highly Mixed,Less/Slower,Some
+12,No Smoothing,Removed,Disabled,5x+Incremental,Less/Slower,Some

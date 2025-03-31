@@ -149,6 +149,30 @@ def create_dcnn_model(
 # dcnn = layers.Dropout(middle_dropout)(dcnn)
 # dcnn = layers.Add()([dcnn, skip])
 
+@utils.register_keras_serializable()
+class LocalMaskLayer(layers.Layer):
+    def __init__(self, radius=3, **kwargs):
+        """
+        Args:
+            radius (int): The allowed distance for positions (default 3).
+        """
+        super(LocalMaskLayer, self).__init__(**kwargs)
+        self.radius = radius
+
+    def call(self, inputs):
+        seq_len = tf.shape(inputs)[1]
+        i = tf.range(seq_len)[:, None]
+        j = tf.range(seq_len)[None, :]
+        mask = tf.cast(tf.abs(i - j) <= self.radius, tf.float32)
+        mask = tf.expand_dims(mask, 0)  # shape: (1, seq_len, seq_len)
+        mask = tf.tile(mask, [tf.shape(inputs)[0], 1, 1])  # shape: (batch, seq_len, seq_len)
+        return mask
+
+    def get_config(self):
+        config = super(LocalMaskLayer, self).get_config()
+        config.update({'radius': self.radius})
+        return config
+
 
 @utils.register_keras_serializable()
 def create_dcnn_model_with_attention(
@@ -171,17 +195,7 @@ def create_dcnn_model_with_attention(
     
     # Option 1: Local Masked Attention after positional encoding
     if use_local_attention:
-        # Define a lambda layer to create a band mask that allows each position to attend to ±3 tokens.
-        def create_local_mask(x):
-            seq_len = tf.shape(x)[1]
-            i = tf.range(seq_len)[:, None]
-            j = tf.range(seq_len)[None, :]
-            mask = tf.cast(tf.abs(i - j) <= 3, tf.float32)  # Allow ±3 positions
-            mask = tf.expand_dims(mask, 0)  # (1, seq_len, seq_len)
-            mask = tf.tile(mask, [tf.shape(x)[0], 1, 1])  # (batch, seq_len, seq_len)
-            return mask
-        
-        local_mask = layers.Lambda(lambda x: create_local_mask(x))(concat_input)
+        local_mask = LocalMaskLayer()(concat_input)
         local_attn = layers.Attention(use_scale=True)(
             [concat_input, concat_input],
             attention_mask=local_mask

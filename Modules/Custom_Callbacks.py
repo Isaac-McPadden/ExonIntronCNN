@@ -101,3 +101,27 @@ class CleanupCallback(callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         # Example: force garbage collection
         gc.collect()
+        
+class SampleCountStopping(Callback):
+    def __init__(self, max_samples):
+        """
+        Args:
+            max_samples (int): The total number of samples to process before stopping.
+        """
+        super(SampleCountStopping, self).__init__()
+        self.max_samples = max_samples
+        self.samples_processed = 0
+
+    def on_train_batch_end(self, batch, logs=None):
+        logs = logs or {}
+        # 'size' is the number of samples in the current batch.
+        batch_size = logs.get('size', 0)
+        self.samples_processed += batch_size
+
+        # Optionally, print or log progress.
+        if self.samples_processed % 1000 < batch_size:
+            print(f"Samples processed so far: {self.samples_processed}")
+
+        if self.samples_processed >= self.max_samples:
+            print(f"Reached target of {self.max_samples} samples. Stopping training.")
+            self.model.stop_training = True
