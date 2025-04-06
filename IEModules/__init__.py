@@ -25,6 +25,7 @@ import os
 '''
 Run the code below in notebooks to get them to add modules to the path
 '''
-# modules_path = os.path.abspath(os.path.join(os.getcwd(), '../../Modules'))
+# modules_path = os.path.abspath(os.path.join(os.getcwd(), '../../EIModules'))
 # if modules_path not in sys.path:
 #     sys.path.insert(0, modules_path)
+# Then import IEModules as iem
