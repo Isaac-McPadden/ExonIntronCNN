@@ -102,7 +102,7 @@ class CleanupCallback(callbacks.Callback):
         # Example: force garbage collection
         gc.collect()
         
-class SampleCountStopping(Callback):
+class SampleCountStopping(callbacks.Callback):
     def __init__(self, max_samples):
         """
         Args:

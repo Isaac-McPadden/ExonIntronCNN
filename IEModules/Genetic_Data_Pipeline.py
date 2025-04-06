@@ -25,7 +25,9 @@ models_path = "../../Models/"
 K.clear_session()
 gc.collect()
 
-
+def test_function(variable):
+    print(f"You entered {variable} into test_function")
+    return variable
 ###########################################
 # FASTA File Processing
 ###########################################
