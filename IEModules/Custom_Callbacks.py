@@ -19,8 +19,8 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
-datasets_path = "../../Datasets/"
-models_path = "../../Models/"
+datasets_path = "../Datasets/"
+models_path = "../Models/"
 
 class TimeLimit(callbacks.Callback):
     def __init__(self, max_time_seconds):

@@ -18,8 +18,8 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 
 # Global paths (adjust as needed)
-datasets_path = "../../Datasets/"
-models_path = "../../Models/"
+datasets_path = "../Datasets/"
+models_path = "../Models/"
 
 # Clear Keras session and collect garbage
 K.clear_session()
@@ -741,11 +741,104 @@ def convert_and_write_tfrecord(input_tfrecord, output_tfrecord, compression_type
             writer.write(serialized_example)
 
 
+def build_initial_shards(shifts: list=[0]):
+    """
+    Function that converts GTF and FASTA into 
+    TFRecord shards for later construction into a dataset.
+    
+    Steps:
+      1. Trim the genome FASTA file to only include the desired chromosomes.
+      2. Load GTF annotations, filter out chrM, and calculate introns.
+      3. Write TFRecord shards using a hybrid (multiprocessing + threading) approach.
+    """
+    
+    # Step 1. Trim the genome FASTA file to only include the desired chromosomes.
+    input_fasta = os.path.join(datasets_path, "chr_genome.fa")
+    output_fasta = os.path.join(datasets_path, "trim_chr_genome.fa")
+    trim_chr_genome(input_fasta, output_fasta)
+    
+    # Step 2. Load GTF annotations, filter out chrM, and calculate introns.
+    annotation_file = os.path.join(datasets_path, "basic_annotations.gtf")
+    annotation_data = load_gtf_annotations(annotation_file)
+    annotation_data = annotation_data[annotation_data["seqname"] != "chrM"]
+    introns = calculate_introns(annotation_data)
+    
+    trimmed_annotation_data = annotation_data[["seqname", "feature", "cstart", "cend", "strand"]]
+    IntronExonDF = pd.concat([trimmed_annotation_data, introns])
+    
+    # Swap columns for minus strand if needed.
+    FixedIntronExonDF = swap_columns_if_needed(IntronExonDF, "cstart", "cend")
+    Trimmed_Intron_Exon_DF = FixedIntronExonDF[
+        ((FixedIntronExonDF["feature"] == "exon") |
+         (FixedIntronExonDF["feature"] == "intron"))
+    ]
+    Trimmed_Intron_Exon_DF = Trimmed_Intron_Exon_DF[["seqname", "feature", "cstart", "cend", "strand"]]
+    print(Trimmed_Intron_Exon_DF.sample(10))
+    
+    output_csv = os.path.join(datasets_path, "FinalIntronExonDF.csv")
+    Trimmed_Intron_Exon_DF.to_csv(output_csv, index=False)
+    
+    # Step 3. Write TFRecord shards using a hybrid (multiprocessing + threading) approach.
+    my_fasta = os.path.join(datasets_path, "trim_chr_genome.fa")
+    my_gtf_df = pd.read_csv(output_csv)
+    output_directory = os.path.join(datasets_path, "Final_Optimized_TFRecord_Shards")
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+    
+    # Example shift for data augmentation (adjust as needed)
+    shifts_serial = "".join("0000" if num == 0 else str(num) for num in shifts)
+    my_prefix = os.path.join(output_directory, f"{shifts_serial}_inex_shard")
+    
+    write_tfrecord_in_shards_hybrid(
+        shard_prefix=my_prefix,
+        fasta_file=my_fasta,
+        gtf_df=my_gtf_df,
+        num_shards=4,
+        compression_type="GZIP",
+        max_processes=4,
+        max_threads_per_process=2,
+        chunk_size=5000,
+        skip_empty=True,
+        shifts=shifts
+    )
+    
+
+def dataset_pipeline_help():
+    print('''
+          1. build_initial_shards function generates 4 tfrecord shards at each shift fed to it.
+          I recommend giving a list of 1 window shift.  Currently paths are hardcoded.  
+          The first 4*n characters of the shards will be the shift numbers where n is 
+          the number of shifts fed to the function.
+          
+          2. split_tfrecords takes an input and output directory and number of file splits
+          and splits each TFRecord in the input_directory (assumed to be gzipped TFRecords)
+          into 'num_splits' smaller TFRecords.
+          
+          3. write_shuffled_records_to_single_tfrecord builds a single big, shuffled, 
+          gzip-compressed TFRecord file 
+          
+          Args:
+            input_dir (str): Directory containing the source TFRecord files.
+            allowed_indices (list): List of allowed starting indices.
+            output_filepath (str): Full path to the output TFRecord file.
+            
+          4. tvt_split_records test, validate, train splits the big tfrecord into 
+          test, validate, and train datasets
+          
+          5. convert_and_write_tfrecord writes a binary only version of the dataset fed to it
+          
+          6. Removing background happens when loading the data into the model
+          ''')
 ###########################################
 # Main Pipeline
 ###########################################
 
 def main():
+    print(
+    '''
+    Hard coded function that converts GTF and FASTA into 
+    tfrecord shards for later construction into a dataset
+    
     # Step 1. Trim the genome FASTA file to only include the desired chromosomes.
     input_fasta = os.path.join(datasets_path, "chr_genome.fa")
     output_fasta = os.path.join(datasets_path, "trim_chr_genome.fa")
@@ -792,6 +885,7 @@ def main():
         skip_empty=True,
         shifts=shifts
     )
+    ''')
 
 
 if __name__ == "__main__":

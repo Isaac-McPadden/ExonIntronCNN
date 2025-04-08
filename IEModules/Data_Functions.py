@@ -19,8 +19,8 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
-datasets_path = "../../Datasets/"
-models_path = "../../Models/"
+datasets_path = "../Datasets/"
+models_path = "../Models/"
 
 
 def drop_exact_records(dataset: tf.data.Dataset, total_records, num_to_drop, seed=None):

@@ -194,3 +194,6 @@ Models/Training Data/*
 Models/Tuning Data/*
 
 venv/
+
+nb_search_tool.py
+file_structure.txt
