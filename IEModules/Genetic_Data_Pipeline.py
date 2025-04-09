@@ -8,6 +8,7 @@ import concurrent.futures as cf
 import random
 import re
 import gc
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -802,6 +803,154 @@ def build_initial_shards(shifts: list=[0]):
         shifts=shifts
     )
     
+    
+def simple_split_tfrecords(input_directory, output_directory, num_splits):
+    """
+    Splits every .tfrecord.gz file in input_directory into num_splits shards.
+    Each shard is written to output_directory with a simple naming scheme.
+    """
+    # Get all .tfrecord.gz files (ignoring directories like the temporary folder).
+    files = [f for f in os.listdir(input_directory)
+             if os.path.isfile(os.path.join(input_directory, f)) and f.endswith('.tfrecord.gz')]
+    
+    for file in files:
+        filepath = os.path.join(input_directory, file)
+        # Count records in the file.
+        total_records = 0
+        for _ in tf.data.TFRecordDataset(filepath, compression_type="GZIP"):
+            total_records += 1
+
+        # Determine the boundaries for splitting.
+        chunk_size = total_records // num_splits
+        remainder = total_records % num_splits
+        boundaries = []
+        start = 0
+        for i in range(num_splits):
+            extra = 1 if i < remainder else 0
+            end = start + chunk_size + extra
+            boundaries.append(end)
+            start = end
+
+        # Create writers for the shards.
+        writers = []
+        base_no_ext = os.path.splitext(file)[0]
+        for i in range(num_splits):
+            new_filename = f"{base_no_ext}_shard_{i:02d}.tfrecord.gz"
+            new_filepath = os.path.join(output_directory, new_filename)
+            options = tf.io.TFRecordOptions(compression_type="GZIP")
+            writer = tf.io.TFRecordWriter(new_filepath, options=options)
+            writers.append(writer)
+
+        # Write records to each shard.
+        current_index = 0
+        shard_index = 0
+        for record in tf.data.TFRecordDataset(filepath, compression_type="GZIP"):
+            if current_index >= boundaries[shard_index]:
+                shard_index += 1
+            writers[shard_index].write(record.numpy())
+            current_index += 1
+
+        for w in writers:
+            w.close()
+
+        print(f"Split {file} into {num_splits} shards.")
+
+
+def simple_stream_shuffled_records(directory):
+    """
+    Streams records randomly from all .tfrecord.gz files in the given directory.
+    """
+    file_paths = [os.path.join(directory, f) for f in os.listdir(directory)
+                  if os.path.isfile(os.path.join(directory, f)) and f.endswith('.tfrecord.gz')]
+    if not file_paths:
+        raise ValueError("No TFRecord shards found in directory: " + directory)
+    
+    # Build iterators for each shard.
+    file_iterators = [(fp, iter(tf.data.TFRecordDataset(fp, compression_type="GZIP")))
+                      for fp in file_paths]
+    
+    while file_iterators:
+        random.shuffle(file_iterators)
+        next_file_iterators = []
+        for fp, iterator in file_iterators:
+            try:
+                record = next(iterator)
+                yield record
+                next_file_iterators.append((fp, iterator))
+            except StopIteration:
+                print(f"Shard {fp} is exhausted.")
+        file_iterators = next_file_iterators
+
+
+def transform_tfdataset(input_directory, output_directory, num_splits, fraction):
+    """
+    Transforms a TFRecord dataset by:
+      1. Creating a temporary shard folder inside the input_directory.
+      2. Splitting every .tfrecord.gz file in the input_directory into num_splits shards.
+      3. Randomly rebuilding a new dataset containing fraction * (total records) records.
+      4. Saving the rebuilt dataset as one .tfrecord.gz file in output_directory. 
+         Its filename is constructed by prefixing the alphabetically first input filename with
+         the two-digit integer (fraction * 100) and an underscore.
+      5. Deleting the temporary shard folder.
+      
+    Parameters:
+      input_directory (str): Path to the input TFRecord collection (directory).
+      output_directory (str): Path to the directory where the output TFRecord will be saved.
+      num_splits (int): Number of shards to split each TFRecord into.
+      fraction (float): Fraction of total records to sample for the new dataset.
+    """
+    
+    # Create a temporary folder for shards inside the input directory.
+    temp_folder = os.path.join(input_directory, "temp_shards")
+    os.makedirs(temp_folder, exist_ok=True)
+    print(f"Temporary folder created at: {temp_folder}")
+    
+    # Count total records in the input TFRecord files.
+    total_records = 0
+    input_files = [f for f in os.listdir(input_directory)
+                   if os.path.isfile(os.path.join(input_directory, f)) and f.endswith(".tfrecord.gz")]
+    for fname in input_files:
+        filepath = os.path.join(input_directory, fname)
+        for _ in tf.data.TFRecordDataset(filepath, compression_type="GZIP"):
+            total_records += 1
+    print(f"Total records found in input dataset: {total_records}")
+    
+    # Compute the number of records to sample.
+    sample_count = int(fraction * total_records)
+    print(f"Sampling {sample_count} records (fraction = {fraction}).")
+    
+    # Split the input TFRecord files into shards (stored in the temporary folder).
+    simple_split_tfrecords(input_directory, temp_folder, num_splits)
+    
+    # Construct the output filename.
+    # Use the alphabetically first .tfrecord.gz filename in the input directory.
+    if not input_files:
+        raise ValueError("No TFRecord files found in the input directory!")
+    base_filename = sorted(input_files)[0]
+    # Compute the two-digit prefix (e.g., fraction 0.5 -> "50_").
+    prefix = f"{int(round(fraction * 100)):02d}_"
+    output_filename = prefix + base_filename
+    os.makedirs(output_directory, exist_ok=True)
+    output_filepath = os.path.join(output_directory, output_filename)
+    
+    # Write out the randomly shuffled sample of records to a single TFRecord file.
+    options = tf.io.TFRecordOptions(compression_type="GZIP")
+    writer = tf.io.TFRecordWriter(output_filepath, options=options)
+    records_written = 0
+    for record in simple_stream_shuffled_records(temp_folder):
+        writer.write(record.numpy())
+        records_written += 1
+        if records_written % 10000 == 0:
+            print(f"{records_written} records written so far...")
+        if records_written >= sample_count:
+            break
+    writer.close()
+    print(f"Finished writing {records_written} records to {output_filepath}")
+    
+    # Delete the temporary shards folder to free disk space.
+    shutil.rmtree(temp_folder)
+    print("Temporary shards have been removed.")    
+
 
 def dataset_pipeline_help():
     print('''
@@ -827,7 +976,7 @@ def dataset_pipeline_help():
           
           5. convert_and_write_tfrecord writes a binary only version of the dataset fed to it
           
-          6. Removing background happens when loading the data into the model
+          6. Removing background happens when loading the data into the model (see Data_Functions.py)
           ''')
 ###########################################
 # Main Pipeline
