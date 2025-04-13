@@ -627,9 +627,10 @@ def test_dataset_from_tfrecords(
     return dataset
 
 
-def tvt_split_tfrecords(original_pattern, train_path, val_path, test_path, train_frac=0.8, val_frac=0.10):
+def tvt_split_multi_tfrecords(original_pattern, train_path, val_path, test_path, train_frac=0.8, val_frac=0.10):
     """
-    Splits TFRecord files into train, validation, and test sets without parsing.
+    Splits TFRecord files into train, validation, and test sets without parsing. 
+    Input is a directory with one or more shards matching a pattern.
     """
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     train_writer = tf.io.TFRecordWriter(train_path, options=options)
@@ -647,6 +648,46 @@ def tvt_split_tfrecords(original_pattern, train_path, val_path, test_path, train
 
     train_count, val_count, test_count = 0, 0, 0
     dataset = tf.data.TFRecordDataset(tf.io.gfile.glob(original_pattern), compression_type='GZIP')
+    dataset = dataset.shuffle(25000, reshuffle_each_iteration=True)
+
+    for i, raw_record in enumerate(dataset):
+        if i < train_size:
+            train_writer.write(raw_record.numpy())
+            train_count += 1
+        elif i < train_size + val_size:
+            val_writer.write(raw_record.numpy())
+            val_count += 1
+        else:
+            test_writer.write(raw_record.numpy())
+            test_count += 1
+
+    train_writer.close()
+    val_writer.close()
+    test_writer.close()
+
+    print(f"Final Split Counts -> Train: {train_count}, Val: {val_count}, Test: {test_count}")
+
+    
+def tvt_split_tfrecords(file_path, train_path, val_path, test_path, train_frac=0.8, val_frac=0.10):
+    """
+    Splits a single TFRecord file into train, validation, and test sets without parsing.
+    """
+    options = tf.io.TFRecordOptions(compression_type="GZIP")
+    train_writer = tf.io.TFRecordWriter(train_path, options=options)
+    val_writer = tf.io.TFRecordWriter(val_path, options=options)
+    test_writer = tf.io.TFRecordWriter(test_path, options=options)
+
+    dataset = tf.data.TFRecordDataset(file_path, compression_type='GZIP')
+    num_records = sum(1 for _ in dataset)
+    print(f"Total records found: {num_records}")
+
+    train_size = int(train_frac * num_records)
+    val_size   = int(val_frac * num_records)
+    test_size  = num_records - train_size - val_size
+    print(f"Splitting into -> Train: {train_size}, Val: {val_size}, Test: {test_size}")
+
+    train_count, val_count, test_count = 0, 0, 0
+    dataset = tf.data.TFRecordDataset(tf.io.gfile.glob(file_path), compression_type='GZIP')
     dataset = dataset.shuffle(25000, reshuffle_each_iteration=True)
 
     for i, raw_record in enumerate(dataset):
