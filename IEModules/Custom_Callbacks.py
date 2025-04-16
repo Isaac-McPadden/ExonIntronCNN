@@ -8,6 +8,7 @@ import concurrent.futures as cf
 import random
 import re
 import json
+import datetime
 
 import numpy as np
 import pandas as pd
@@ -193,14 +194,24 @@ class StatefulReduceLROnPlateau(tf.keras.callbacks.ReduceLROnPlateau):
 # ===== Example Usage =====
 
 # Set up the custom callback with a path for auto-saving state.
-reduce_lr = StatefulReduceLROnPlateau(
-    monitor='val_no_background_f1',
-    factor=0.5,
-    patience=5,
-    min_lr=1e-6,
-    verbose=1,
-    state_save_filepath='reduce_lr_state.json'
-)
+# reduce_lr = StatefulReduceLROnPlateau(
+#     monitor='val_no_background_f1',
+#     factor=0.5,
+#     patience=5,
+#     min_lr=1e-6,
+#     verbose=1,
+#     state_save_filepath='reduce_lr_state.json'
+# )
 
 # Use the callback during training:
 # model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=..., callbacks=[reduce_lr, ...])
+
+
+
+tb_log_dir = "./Logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+tensorboard_callback = callbacks.TensorBoard(log_dir=tb_log_dir, histogram_freq=1)
+
+# Accessing tensorboard
+# Bash:
+# tensorboard --logdir=logs/fit
+# Open a browser and go to http://localhost:6006
