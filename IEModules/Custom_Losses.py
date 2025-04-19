@@ -17,6 +17,7 @@ import gc
 import keras_tuner as kt
 from pyfaidx import Fasta
 
+from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 
 @utils.register_keras_serializable()
 class CustomBinaryFocalLoss(losses.Loss):

@@ -24,6 +24,7 @@ from . import Custom_Models
 from . import Data_Functions
 from . import Genetic_Data_Pipeline
 from . import Helper_Functions
+from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 '''
 Run the code below in notebooks to get them to add modules to the path
 '''

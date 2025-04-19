@@ -18,9 +18,11 @@ from keras import backend as K
 import keras_tuner as kt
 from pyfaidx import Fasta
 
+from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+
 # Global paths (adjust as needed)
-datasets_path = "../Datasets/"
-models_path = "../Models/"
+DATA_DIR = "../Datasets/"
+MODEL_DIR = "../Models/"
 
 # Clear Keras session and collect garbage
 K.clear_session()
@@ -795,12 +797,12 @@ def build_initial_shards(shifts: list=[0]):
     """
     
     # Step 1. Trim the genome FASTA file to only include the desired chromosomes.
-    input_fasta = os.path.join(datasets_path, "chr_genome.fa")
-    output_fasta = os.path.join(datasets_path, "trim_chr_genome.fa")
+    input_fasta = os.path.join(DATA_DIR, "chr_genome.fa")
+    output_fasta = os.path.join(DATA_DIR, "trim_chr_genome.fa")
     trim_chr_genome(input_fasta, output_fasta)
     
     # Step 2. Load GTF annotations, filter out chrM, and calculate introns.
-    annotation_file = os.path.join(datasets_path, "basic_annotations.gtf")
+    annotation_file = os.path.join(DATA_DIR, "basic_annotations.gtf")
     annotation_data = load_gtf_annotations(annotation_file)
     annotation_data = annotation_data[annotation_data["seqname"] != "chrM"]
     introns = calculate_introns(annotation_data)
@@ -817,13 +819,13 @@ def build_initial_shards(shifts: list=[0]):
     Trimmed_Intron_Exon_DF = Trimmed_Intron_Exon_DF[["seqname", "feature", "cstart", "cend", "strand"]]
     print(Trimmed_Intron_Exon_DF.sample(10))
     
-    output_csv = os.path.join(datasets_path, "FinalIntronExonDF.csv")
+    output_csv = os.path.join(DATA_DIR, "FinalIntronExonDF.csv")
     Trimmed_Intron_Exon_DF.to_csv(output_csv, index=False)
     
     # Step 3. Write TFRecord shards using a hybrid (multiprocessing + threading) approach.
-    my_fasta = os.path.join(datasets_path, "trim_chr_genome.fa")
+    my_fasta = os.path.join(DATA_DIR, "trim_chr_genome.fa")
     my_gtf_df = pd.read_csv(output_csv)
-    output_directory = os.path.join(datasets_path, "Final_Optimized_TFRecord_Shards")
+    output_directory = os.path.join(DATA_DIR, "Final_Optimized_TFRecord_Shards")
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     
@@ -1030,12 +1032,12 @@ def main():
     tfrecord shards for later construction into a dataset
     
     # Step 1. Trim the genome FASTA file to only include the desired chromosomes.
-    input_fasta = os.path.join(datasets_path, "chr_genome.fa")
-    output_fasta = os.path.join(datasets_path, "trim_chr_genome.fa")
+    input_fasta = os.path.join(DATA_DIR, "chr_genome.fa")
+    output_fasta = os.path.join(DATA_DIR, "trim_chr_genome.fa")
     trim_chr_genome(input_fasta, output_fasta)
     
     # Step 2. Load GTF annotations, filter out chrM, and calculate introns.
-    annotation_file = os.path.join(datasets_path, 'basic_annotations.gtf')
+    annotation_file = os.path.join(DATA_DIR, 'basic_annotations.gtf')
     annotation_data = load_gtf_annotations(annotation_file)
     annotation_data = annotation_data[annotation_data["seqname"] != "chrM"]
     introns = calculate_introns(annotation_data)
@@ -1049,13 +1051,13 @@ def main():
                                                  (FixedIntronExonDF["feature"] == "intron"))]
     Trimmed_Intron_Exon_DF = Trimmed_Intron_Exon_DF[["seqname", "feature", "cstart", "cend", "strand"]]
     print(Trimmed_Intron_Exon_DF.sample(10))
-    output_csv = os.path.join(datasets_path, "FinalIntronExonDF.csv")
+    output_csv = os.path.join(DATA_DIR, "FinalIntronExonDF.csv")
     Trimmed_Intron_Exon_DF.to_csv(output_csv, index=False)
     
     # Step 3. Write TFRecord shards using hybrid (multiprocessing + threading) approach.
-    my_fasta = os.path.join(datasets_path, 'trim_chr_genome.fa')
+    my_fasta = os.path.join(DATA_DIR, 'trim_chr_genome.fa')
     my_gtf_df = pd.read_csv(output_csv)
-    output_directory = os.path.join(datasets_path, "Final_Optimized_TFRecord_Shards")
+    output_directory = os.path.join(DATA_DIR, "Final_Optimized_TFRecord_Shards")
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     

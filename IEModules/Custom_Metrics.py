@@ -20,8 +20,10 @@ from keras import backend as K
 # K.clear_session()
 # gc.collect()
 
-# datasets_path = "../../Datasets/"
-# models_path = "../../Models/"
+# DATA_DIR = "../../Datasets/"
+# MODEL_DIR = "../../Models/"
+
+from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 
 
 @utils.register_keras_serializable()

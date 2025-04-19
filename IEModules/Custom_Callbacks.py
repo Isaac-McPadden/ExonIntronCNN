@@ -20,8 +20,8 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
-datasets_path = "../Datasets/"
-models_path = "../Models/"
+from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+MODEL_DIR = "../Models/"
 
 class TimeLimit(callbacks.Callback):
     def __init__(self, max_time_seconds):
@@ -79,7 +79,7 @@ class DebugCallback(callbacks.Callback):
         
 
 checkpoint_cb = callbacks.ModelCheckpoint(
-    filepath=models_path + 'checkpoints/epoch-{epoch:03d}-val_no_background_f1-{val_no_background_f1:.4f}.keras',
+    filepath=MODEL_DIR + 'checkpoints/epoch-{epoch:03d}-val_no_background_f1-{val_no_background_f1:.4f}.keras',
     # monitor='val_loss',          # what metric to name file on
     monitor='val_no_background_f1',
     mode='max',                    # Required for monitoring f1, comment out if monitoring val loss
