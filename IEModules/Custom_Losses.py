@@ -344,3 +344,93 @@ class CustomBinaryCrossentropyLoss(losses.Loss):
             'background_removed': self.background_removed
         })
         return config
+ 
+
+@utils.register_keras_serializable 
+class SwitchingFocalLoss(Loss):
+    def __init__(self,
+                 swap_epoch=3,
+                 **shared_kwargs):
+        super().__init__(name="switching_focal_loss")
+        # Internal epoch counter
+        self.epoch_var = K.variable(0, dtype="int32", name="current_epoch")
+        self.swap_epoch = swap_epoch
+
+        # Two instances of your custom loss
+        self.loss1 = CustomBinaryFocalLoss(**shared_kwargs, smoothing_as_correct=True)
+        self.loss2 = CustomBinaryFocalLoss(**shared_kwargs, smoothing_as_correct=False)
+
+    def call(self, y_true, y_pred):
+        # Branch in graph
+        return tf.cond(
+            tf.less(self.epoch_var, self.swap_epoch),
+            lambda: self.loss1(y_true, y_pred),
+            lambda: self.loss2(y_true, y_pred),
+        )
+
+    def get_config(self):
+        base = super().get_config()
+        base.update({
+            "swap_epoch": self.swap_epoch,
+            # plus any other args you want to save…
+        })
+        return base
+    
+@utils.register_keras_serializable 
+class SwitchingBinaryCrossentropyLoss(Loss):
+    def __init__(self,
+                 swap_epoch=3,
+                 **shared_kwargs):
+        super().__init__(name="switching_focal_loss")
+        # Internal epoch counter
+        self.epoch_var = K.variable(0, dtype="int32", name="current_epoch")
+        self.swap_epoch = swap_epoch
+
+        # Two instances of your custom loss
+        self.loss1 = CustomBinaryCrossentropyLoss(**shared_kwargs, smoothing_as_correct=True)
+        self.loss2 = CustomBinaryCrossentropyLoss(**shared_kwargs, smoothing_as_correct=False)
+
+    def call(self, y_true, y_pred):
+        # Branch in graph
+        return tf.cond(
+            tf.less(self.epoch_var, self.swap_epoch),
+            lambda: self.loss1(y_true, y_pred),
+            lambda: self.loss2(y_true, y_pred),
+        )
+
+    def get_config(self):
+        base = super().get_config()
+        base.update({
+            "swap_epoch": self.swap_epoch,
+            # plus any other args you want to save…
+        })
+        return base
+
+@utils.register_keras_serializable
+class EpochUpdater(tf.keras.callbacks.Callback):
+    def __init__(self, loss_obj):
+        super().__init__()
+        self.loss_obj = loss_obj
+
+    def on_epoch_end(self, epoch, logs=None):
+        # epoch runs 0,1,2,… so set to epoch+1
+        K.set_value(self.loss_obj.epoch_var, epoch + 1)
+   
+# Instantiate switchable loss:
+# switchable_loss = SwitchingFocalLoss(
+#     swap_epoch=3,
+#     dominant_class_index=0,
+#     focal_gamma=2.0,
+#     focal_alpha=0.25,
+#     # …etc…
+# )
+
+# model.compile(optimizer="adam", loss=switchable_loss, metrics=[…])
+
+# # Fit with our callback that bumps the epoch counter inside the loss
+# model.fit(
+#     x_train, y_train,
+#     epochs=10,
+#     callbacks=[EpochUpdater(switchable_loss)],
+#     …
+# )
