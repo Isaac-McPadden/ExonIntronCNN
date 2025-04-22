@@ -347,7 +347,7 @@ class CustomBinaryCrossentropyLoss(losses.Loss):
  
 
 @utils.register_keras_serializable 
-class SwitchingFocalLoss(Loss):
+class SwitchingFocalLoss(losses.Loss):
     def __init__(self,
                  swap_epoch=3,
                  **shared_kwargs):
@@ -377,7 +377,7 @@ class SwitchingFocalLoss(Loss):
         return base
     
 @utils.register_keras_serializable 
-class SwitchingBinaryCrossentropyLoss(Loss):
+class SwitchingBinaryCrossentropyLoss(losses.Loss):
     def __init__(self,
                  swap_epoch=3,
                  **shared_kwargs):
