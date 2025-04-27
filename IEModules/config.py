@@ -10,6 +10,12 @@ MODEL_DIR    = os.path.abspath(os.path.join(BASE_DIR, "../Models"))
 MODULE_DIR   = BASE_DIR
 NOTEBOOK_DIR = os.path.abspath(os.path.join(BASE_DIR, "../Notebooks"))
 
+# ── Constants ──────────────────────────────────────────────────────────────────
+EPOCH_UNIT_SIZE = int(1182630/5)
+EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
+DEFAULT_BATCH_SIZE = 28
+STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
+
 if __name__ == "__main__":
     print("BASE_DIR:", BASE_DIR)
     print("DATA_DIR:", DATA_DIR)
