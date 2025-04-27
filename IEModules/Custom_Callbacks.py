@@ -128,7 +128,7 @@ class SampleCountStopping(callbacks.Callback):
             self.model.stop_training = True
             
 
-class StatefulReduceLROnPlateau(tf.keras.callbacks.ReduceLROnPlateau):
+class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
     """
     A subclass of ReduceLROnPlateau that adds the ability
     to save and load its state. It automatically saves its state at the end of every epoch.
