@@ -20,8 +20,8 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
-from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
-from .config import (
+from config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+from config import (
     MODEL_DIR,
     CHECKPOINT_SUBDIR,
     CHECKPOINT_FILENAME,
@@ -30,7 +30,8 @@ from .config import (
     CHECKPOINT_SAVE_BEST_ONLY,
     CHECKPOINT_SAVE_WEIGHTS_ONLY,
     CHECKPOINT_SAVE_FREQ,
-    LR_STATE_SAVE_PATH,
+    LR_STATE_SAVE_SUBDIR,
+    LR_STATE_SAVE_FILENAME,
     experiment_folder
 )
 
@@ -216,7 +217,7 @@ class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
 
 # Use the callback during training:
 # model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=..., callbacks=[reduce_lr, ...])
-cleanup_cb = CleanupCallback
+cleanup_cb = CleanupCallback()
 
 checkpoint_dir = experiment_folder / CHECKPOINT_SUBDIR
 checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -238,8 +239,9 @@ early_stopping_cb = callbacks.EarlyStopping(
     restore_best_weights=True
 )
 
-lr_state_dir = experiment_folder / LR_STATE_SAVE_PATH
+lr_state_dir = experiment_folder / LR_STATE_SAVE_SUBDIR
 lr_state_dir.mkdir(parents=True, exist_ok=True)
+lr_state_path = lr_state_dir / LR_STATE_SAVE_FILENAME
 
 reduce_lr_cb = StatefulReduceLROnPlateau(
     monitor=CHECKPOINT_MONITOR,
@@ -248,13 +250,21 @@ reduce_lr_cb = StatefulReduceLROnPlateau(
     patience=5,
     min_lr=1e-6,
     verbose=1,
-    state_save_filepath=lr_state_dir
+    state_save_filepath=lr_state_path
 )
 
-tb_log_dir = "./Logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-tensorboard_cb = callbacks.TensorBoard(log_dir=tb_log_dir, histogram_freq=1)
+# Running this in the experiment so trial number is part of the name
+# tb_log_dir = "./Logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+# tensorboard_cb = callbacks.TensorBoard(log_dir=tb_log_dir, histogram_freq=1)
 
 # Accessing tensorboard
 # Bash:
 # tensorboard --logdir=logs/fit
 # Open a browser and go to http://localhost:6006
+
+CALLBACKS = [
+    cleanup_cb,
+    checkpoint_cb,
+    early_stopping_cb,
+    reduce_lr_cb,
+    ]

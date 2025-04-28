@@ -19,7 +19,7 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
-from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+from config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 
 # Various helper functions related to trial data recording.
 

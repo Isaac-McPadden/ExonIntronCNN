@@ -23,7 +23,7 @@ from keras import backend as K
 # DATA_DIR = "../../Datasets/"
 # MODEL_DIR = "../../Models/"
 
-from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+from config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 
 
 @utils.register_keras_serializable()
@@ -850,6 +850,18 @@ custom_metrics_classes = [
     CustomNoBackgroundPrecision, 
     CustomNoBackgroundRecall, 
     CustomBackgroundOnlyF1Score
+]
+
+METRICS = [
+    CustomNoBackgroundAUC, # PR-AUC, most important metric
+    CustomNoBackgroundF1Score,
+    # CustomFalsePositiveDistance, # Not actually that useful
+    # CustomBackgroundOnlyF1Score, # Definitely not useful
+    CustomNoBackgroundAccuracy, # For kicks, useless for sparse data
+    CustomNoBackgroundPrecision,
+    CustomNoBackgroundRecall,
+    CustomConditionalF1Score(filter_mode='pred', name="conditional_f1_pred"),  # 'pred' 'true' or 'either'
+    CustomConditionalF1Score(filter_mode='true', name="conditional_f1_true"),  # 'pred' 'true' or 'either'
 ]
 
 def main():

@@ -17,27 +17,48 @@ import gc
 import keras_tuner as kt
 from pyfaidx import Fasta
 
-from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+from config import (
+    DATA_DIR, 
+    LOG_DIR, 
+    MODEL_DIR, 
+    MODULE_DIR, 
+    NOTEBOOK_DIR, 
+    INCORRECT_SMOOTHING_MULTIPLIER, 
+    CORRECT_SMOOTHING_MULTIPLIER,
+    DOMINANT_CLASS_INDEX,
+    DOMINANT_CORRECT_MULTIPLIER,
+    DOMINANT_INCORRECT_MULTIPLIER,
+    OTHER_TP_MULTIPLIER,
+    OTHER_FN_MULTIPLIER,
+    OTHER_FP_MULTIPLIER,
+    OTHER_TN_MULTIPLIER,
+    THRESHOLD,
+    FOCAL_GAMMA,
+    FOCAL_ALPHA,
+    DEFAULT_SMOOTHING_AS_CORRECT,
+    LABEL_SMOOTHING,
+    SWAP_EPOCH,
+)
 
 @utils.register_keras_serializable()
 class CustomBinaryFocalLoss(losses.Loss):
     def __init__(self,
-                 dominant_class_index=0,
+                 dominant_class_index=DOMINANT_CLASS_INDEX,
                  # Dominant class multipliers
-                 dominant_correct_multiplier=0.99,    # Reward when dominant class is correct
-                 dominant_incorrect_multiplier=2.5,     # Penalty when dominant class is incorrect
+                 dominant_correct_multiplier=DOMINANT_CORRECT_MULTIPLIER,    # Reward when dominant class is correct
+                 dominant_incorrect_multiplier=DOMINANT_INCORRECT_MULTIPLIER,     # Penalty when dominant class is incorrect
                  # Expanded non-dominant multipliers for hard labels
-                 other_class_true_positive_multiplier=0.05,   # Reward when y_true==1 and prediction is positive
-                 other_class_false_negative_multiplier=3.0,     # Punish when y_true==1 but prediction is negative
-                 other_class_false_positive_multiplier=1.0,     # Punish when y_true==0 but prediction is positive
-                 other_class_true_negative_multiplier=0.99,     # Reward when y_true==0 and prediction is negative
+                 other_class_true_positive_multiplier=OTHER_TP_MULTIPLIER,   # Reward when y_true==1 and prediction is positive
+                 other_class_false_negative_multiplier=OTHER_FN_MULTIPLIER,     # Punish when y_true==1 but prediction is negative
+                 other_class_false_positive_multiplier=OTHER_FP_MULTIPLIER,     # Punish when y_true==0 but prediction is positive
+                 other_class_true_negative_multiplier=OTHER_TN_MULTIPLIER,     # Reward when y_true==0 and prediction is negative
                  # For smoothed labels (0 < y_true < 1)
-                 smoothing_multiplier=0.5,              # Scales the effect of a smoothed label
-                 smoothing_as_correct=True,             # If True, a high prediction on a smoothed label is rewarded; else, punished
-                 threshold=0.5,                         # Threshold to decide if a prediction is "positive"
+                 smoothing_multiplier=INCORRECT_SMOOTHING_MULTIPLIER,              # Scales the effect of a smoothed label
+                 smoothing_as_correct=DEFAULT_SMOOTHING_AS_CORRECT,             # If True, a high prediction on a smoothed label is rewarded; else, punished
+                 threshold=THRESHOLD,                         # Threshold to decide if a prediction is "positive"
                  # Focal loss parameters
-                 focal_gamma=2.0,                       # Focusing parameter gamma
-                 focal_alpha=0.25,                      # Balance parameter alpha
+                 focal_gamma=FOCAL_GAMMA,                       # Focusing parameter gamma
+                 focal_alpha=FOCAL_ALPHA,                      # Balance parameter alpha
                  background_removed=False,              # New flag: if True, the background (dominant) class is not present
                  name="custom_binary_focal_loss",
                  reduction="sum_over_batch_size"):
@@ -215,18 +236,18 @@ class CustomBinaryFocalLoss(losses.Loss):
 @utils.register_keras_serializable()
 class CustomBinaryCrossentropyLoss(losses.Loss):
     def __init__(self,
-                 dominant_class_index=0,
+                 dominant_class_index=DOMINANT_CLASS_INDEX,
                  # Dominant class multipliers
-                 dominant_correct_multiplier=0.99,    # Reward when dominant class is correct
-                 dominant_incorrect_multiplier=2.5,     # Penalty when dominant class is incorrect
+                 dominant_correct_multiplier=DOMINANT_CORRECT_MULTIPLIER,    # Reward when dominant class is correct
+                 dominant_incorrect_multiplier=DOMINANT_INCORRECT_MULTIPLIER,     # Penalty when dominant class is incorrect
                  # Non-dominant class multipliers for hard labels
-                 other_class_true_positive_multiplier=0.05,   # Reward when y_true==1 and prediction is positive
-                 other_class_false_negative_multiplier=3.0,     # Punish when y_true==1 but prediction is negative
-                 other_class_false_positive_multiplier=1.0,     # Punish when y_true==0 but prediction is positive
-                 other_class_true_negative_multiplier=0.99,     # Reward when y_true==0 and prediction is negative
+                 other_class_true_positive_multiplier=OTHER_TP_MULTIPLIER,   # Reward when y_true==1 and prediction is positive
+                 other_class_false_negative_multiplier=OTHER_FN_MULTIPLIER,     # Punish when y_true==1 but prediction is negative
+                 other_class_false_positive_multiplier=OTHER_FP_MULTIPLIER,     # Punish when y_true==0 but prediction is positive
+                 other_class_true_negative_multiplier=OTHER_TN_MULTIPLIER,     # Reward when y_true==0 and prediction is negative
                  # Focal loss parameters
-                 focal_gamma=2.0,                       # Focusing parameter gamma
-                 focal_alpha=0.25,                      # Balance parameter alpha
+                 focal_gamma=FOCAL_GAMMA,                       # Focusing parameter gamma
+                 focal_alpha=FOCAL_ALPHA,                      # Balance parameter alpha
                  # Optional label smoothing (standard method)
                  label_smoothing=0.0,                   # If > 0, perform standard label smoothing on y_true.
                  background_removed=False,              # New flag: if True, background class is not present.
@@ -349,7 +370,7 @@ class CustomBinaryCrossentropyLoss(losses.Loss):
 @utils.register_keras_serializable 
 class SwitchingFocalLoss(losses.Loss):
     def __init__(self,
-                 swap_epoch=3,
+                 swap_epoch=SWAP_EPOCH,
                  **shared_kwargs):
         super().__init__(name="switching_focal_loss")
         # Internal epoch counter
@@ -357,8 +378,16 @@ class SwitchingFocalLoss(losses.Loss):
         self.swap_epoch = swap_epoch
 
         # Two instances of your custom loss
-        self.loss1 = CustomBinaryFocalLoss(**shared_kwargs, smoothing_as_correct=True)
-        self.loss2 = CustomBinaryFocalLoss(**shared_kwargs, smoothing_as_correct=False)
+        self.loss1 = CustomBinaryFocalLoss(
+            **shared_kwargs, 
+            smoothing_as_correct=True, 
+            smoothing_multiplier=CORRECT_SMOOTHING_MULTIPLIER
+            )
+        self.loss2 = CustomBinaryFocalLoss(
+            **shared_kwargs, 
+            smoothing_as_correct=False,
+            smoothing_multiplier=INCORRECT_SMOOTHING_MULTIPLIER
+            )
 
     def call(self, y_true, y_pred):
         # Branch in graph
@@ -379,16 +408,24 @@ class SwitchingFocalLoss(losses.Loss):
 @utils.register_keras_serializable 
 class SwitchingBinaryCrossentropyLoss(losses.Loss):
     def __init__(self,
-                 swap_epoch=3,
+                 swap_epoch=SWAP_EPOCH,
                  **shared_kwargs):
-        super().__init__(name="switching_focal_loss")
+        super().__init__(name="switching_binary_loss")
         # Internal epoch counter
         self.epoch_var = K.variable(0, dtype="int32", name="current_epoch")
         self.swap_epoch = swap_epoch
 
         # Two instances of your custom loss
-        self.loss1 = CustomBinaryCrossentropyLoss(**shared_kwargs, smoothing_as_correct=True)
-        self.loss2 = CustomBinaryCrossentropyLoss(**shared_kwargs, smoothing_as_correct=False)
+        self.loss1 = CustomBinaryCrossentropyLoss(
+            **shared_kwargs, 
+            smoothing_as_correct=True, 
+            smoothing_multiplier=CORRECT_SMOOTHING_MULTIPLIER
+            )
+        self.loss2 = CustomBinaryCrossentropyLoss(
+            **shared_kwargs, 
+            smoothing_as_correct=False,
+            smoothing_multiplier=INCORRECT_SMOOTHING_MULTIPLIER
+            )
 
     def call(self, y_true, y_pred):
         # Branch in graph
@@ -407,7 +444,7 @@ class SwitchingBinaryCrossentropyLoss(losses.Loss):
         return base
 
 @utils.register_keras_serializable
-class EpochUpdater(tf.keras.callbacks.Callback):
+class EpochUpdater(callbacks.Callback):
     def __init__(self, loss_obj):
         super().__init__()
         self.loss_obj = loss_obj
@@ -418,10 +455,10 @@ class EpochUpdater(tf.keras.callbacks.Callback):
    
 # Instantiate switchable loss:
 # switchable_loss = SwitchingFocalLoss(
-#     swap_epoch=3,
-#     dominant_class_index=0,
-#     focal_gamma=2.0,
-#     focal_alpha=0.25,
+#     swap_epoch=SWAP_EPOCH,
+#     dominant_class_index=DOMINANT_CLASS_INDEX,
+#     focal_gamma=FOCAL_GAMMA,
+#     focal_alpha=FOCAL_ALPHA,
 #     # …etc…
 # )
 

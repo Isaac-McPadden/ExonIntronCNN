@@ -1,8 +1,8 @@
 # config.py
 import sys
 from pathlib import Path
-from . import Custom_Metrics as cm
-from . import Custom_Callbacks as cc
+# import Custom_Metrics as cm
+# import Custom_Callbacks as cc
 from keras import optimizers
 
 # ── Project Directories ──────────────────────────────────────────────────────────────────
@@ -43,16 +43,13 @@ SEED = 42
 # ── Optimizer settings ──────────────────────────────────────────────────────────────────
 INITIAL_LEARNING_RATE = 0.001
 INITIAL_OPTIMIZER = optimizers.Adam(learning_rate=INITIAL_LEARNING_RATE)
-GENERIC_OPTIMIZER = optimizers.Adam
+GENERIC_OPTIMIZER = optimizers.Adam()
 # Plateau rate reduction handled by callback
-
-'''BREADCRUMB FOR SELF: Still need loss config
-More importantly, need to deal with lr_state_dir and path issues for the json save
-'''
 
 # ── Callback checkpoints config ──────────────────────────────────────────────────────────────────
 CHECKPOINT_SUBDIR            = "Checkpoints"
-LR_STATE_SAVE_PATH         = "LR_State/reduce_lr_state.json"
+LR_STATE_SAVE_SUBDIR         = "LR_State"
+LR_STATE_SAVE_FILENAME       = "reduce_lr_state.json"
 # filename template with Keras epoch & metric tokens
 CHECKPOINT_FILENAME          = "epoch-{epoch:03d}-val_no_background_auc-{val_no_background_auc:.4f}.keras"
 CHECKPOINT_MONITOR           = "val_no_background_auc"
@@ -61,27 +58,22 @@ CHECKPOINT_SAVE_BEST_ONLY    = False  # save model always
 CHECKPOINT_SAVE_WEIGHTS_ONLY = False  # save full model (architecture + weights)
 CHECKPOINT_SAVE_FREQ         = "epoch"
 
-# ── Callbacks ──────────────────────────────────────────────────────────────────
-REDUCE_LR_CALLBACK = cc.reduce_lr_cb
-CALLBACKS = [
-    cc.cleanup_cb,
-    cc.checkpoint_cb,
-    cc.early_stopping_cb,
-    REDUCE_LR_CALLBACK,
-    ]
-
-# ── Metrics ──────────────────────────────────────────────────────────────────
-METRICS = [
-    cm.CustomNoBackgroundAUC, # PR-AUC, most important metric
-    cm.CustomNoBackgroundF1Score,
-    # cm.CustomFalsePositiveDistance, # Not actually that useful
-    # cm.CustomBackgroundOnlyF1Score, # Definitely not useful
-    cm.CustomNoBackgroundAccuracy, # For kicks
-    cm.CustomNoBackgroundPrecision,
-    cm.CustomNoBackgroundRecall
-]
-
 # ── Loss kwargs config ──────────────────────────────────────────────────────────────────
+DOMINANT_CLASS_INDEX = 0              # Never needs to be changed really
+DOMINANT_CORRECT_MULTIPLIER = 0.99    # Reward when dominant class is correct
+DOMINANT_INCORRECT_MULTIPLIER = 2.5   # Penalty when dominant class is incorrect
+OTHER_TP_MULTIPLIER = 0.05            # Reward when y_true==1 and prediction is positive
+OTHER_FN_MULTIPLIER = 3.0             # Punish when y_true==1 but prediction is negative
+OTHER_FP_MULTIPLIER = 1.0             # Punish when y_true==0 but prediction is positive
+OTHER_TN_MULTIPLIER = 0.99            # Reward when y_true==0 and prediction is negative
+THRESHOLD = 0.5                       # Threshold to decide if a prediction is "positive"
+FOCAL_GAMMA = 2.5                     # Focusing parameter gamma
+FOCAL_ALPHA = 0.25                    # Balance parameter alpha
+INCORRECT_SMOOTHING_MULTIPLIER = 1.1  # For smooothing as correct is False, Scales the effect of a custom smoothed label
+CORRECT_SMOOTHING_MULTIPLIER = 0.5    # For smoothing as correct is True, Scales the effect of a custom smoothed label
+DEFAULT_SMOOTHING_AS_CORRECT = False  # If True, a high prediction on a smoothed label is rewarded; else, punished
+LABEL_SMOOTHING = 0.1                 # Proper label smoothing value.  
+SWAP_EPOCH = 3                        # Number of rewarding epochs
 
 
 def main():

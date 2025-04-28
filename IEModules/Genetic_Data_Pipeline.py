@@ -18,7 +18,7 @@ from keras import backend as K
 import keras_tuner as kt
 from pyfaidx import Fasta
 
-from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+from config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 
 # Global paths (adjust as needed)
 DATA_DIR = "../Datasets/"
