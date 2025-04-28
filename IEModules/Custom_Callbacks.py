@@ -21,7 +21,18 @@ from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
 from .config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
-MODEL_DIR = "../Models/"
+from .config import (
+    MODEL_DIR,
+    CHECKPOINT_SUBDIR,
+    CHECKPOINT_FILENAME,
+    CHECKPOINT_MONITOR,
+    CHECKPOINT_MODE,
+    CHECKPOINT_SAVE_BEST_ONLY,
+    CHECKPOINT_SAVE_WEIGHTS_ONLY,
+    CHECKPOINT_SAVE_FREQ,
+    LR_STATE_SAVE_PATH,
+    experiment_folder
+)
 
 class TimeLimit(callbacks.Callback):
     def __init__(self, max_time_seconds):
@@ -78,25 +89,25 @@ class DebugCallback(callbacks.Callback):
 #         print(f"Cleanup done at the end of epoch {epoch+1}")
         
 
-checkpoint_cb = callbacks.ModelCheckpoint(
-    filepath=MODEL_DIR + 'checkpoints/epoch-{epoch:03d}-val_no_background_f1-{val_no_background_f1:.4f}.keras',
-    # monitor='val_loss',          # what metric to name file on
-    monitor='val_no_background_f1',
-    mode='max',                    # Required for monitoring f1, comment out if monitoring val loss
-    save_best_only=False,        # save model always 
-    save_weights_only=False,     # save full model (architecture + weights)
-    save_freq='epoch'
-)
+# checkpoint_cb = callbacks.ModelCheckpoint(
+#     filepath=MODEL_DIR + 'checkpoints/epoch-{epoch:03d}-val_no_background_f1-{val_no_background_f1:.4f}.keras',
+#     # monitor='val_loss',          # what metric to name file on
+#     monitor='val_no_background_f1',
+#     mode='max',                    # Required for monitoring f1, comment out if monitoring val loss
+#     save_best_only=False,        # save model always 
+#     save_weights_only=False,     # save full model (architecture + weights)
+#     save_freq='epoch'
+# )
 
 
-early_stopping_cb = callbacks.EarlyStopping(
-    # monitor='val_loss',
-    monitor='val_no_background_f1',
-    mode='max',
-    patience=20,
-    min_delta=1e-4,
-    restore_best_weights=True
-)
+# early_stopping_cb = callbacks.EarlyStopping(
+#     # monitor='val_loss',
+#     monitor='val_no_background_f1',
+#     mode='max',
+#     patience=20,
+#     min_delta=1e-4,
+#     restore_best_weights=True
+# )
 
 class CleanupCallback(callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
@@ -205,11 +216,43 @@ class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
 
 # Use the callback during training:
 # model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=..., callbacks=[reduce_lr, ...])
+cleanup_cb = CleanupCallback
 
+checkpoint_dir = experiment_folder / CHECKPOINT_SUBDIR
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
+checkpoint_cb = callbacks.ModelCheckpoint(
+    filepath=str(checkpoint_dir / CHECKPOINT_FILENAME),
+    monitor=CHECKPOINT_MONITOR,
+    mode=CHECKPOINT_MODE,
+    save_best_only=CHECKPOINT_SAVE_BEST_ONLY,
+    save_weights_only=CHECKPOINT_SAVE_WEIGHTS_ONLY,
+    save_freq=CHECKPOINT_SAVE_FREQ,
+)
+
+early_stopping_cb = callbacks.EarlyStopping(
+    monitor=CHECKPOINT_MONITOR,
+    mode=CHECKPOINT_MODE,
+    patience=20,
+    min_delta=1e-4,
+    restore_best_weights=True
+)
+
+lr_state_dir = experiment_folder / LR_STATE_SAVE_PATH
+lr_state_dir.mkdir(parents=True, exist_ok=True)
+
+reduce_lr_cb = StatefulReduceLROnPlateau(
+    monitor=CHECKPOINT_MONITOR,
+    mode=CHECKPOINT_MODE,
+    factor=0.5,
+    patience=5,
+    min_lr=1e-6,
+    verbose=1,
+    state_save_filepath=lr_state_dir
+)
 
 tb_log_dir = "./Logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-tensorboard_callback = callbacks.TensorBoard(log_dir=tb_log_dir, histogram_freq=1)
+tensorboard_cb = callbacks.TensorBoard(log_dir=tb_log_dir, histogram_freq=1)
 
 # Accessing tensorboard
 # Bash:
