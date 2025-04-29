@@ -18,11 +18,11 @@ from keras import backend as K
 import keras_tuner as kt
 from pyfaidx import Fasta
 
-from config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+from IEModules.config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
 
 # Global paths (adjust as needed)
-DATA_DIR = "../Datasets/"
-MODEL_DIR = "../Models/"
+# DATA_DIR = "../Datasets/"
+# MODEL_DIR = "../Models/"
 
 # Clear Keras session and collect garbage
 K.clear_session()

@@ -17,7 +17,7 @@ MODEL_DIR    = PROJECT_ROOT / "Models"
 NOTEBOOK_DIR = PROJECT_ROOT / "Notebooks"
 
 '''
-CONVERT TO CLI LATER
+CONVERT TO CLI LATER - Done in Experiment Framework, not done in Custom_Callbacks
 '''
 experiment_data_folder = DATA_DIR / "Experiment 01"
 experiment_folder = MODEL_DIR / "Experiment 01"

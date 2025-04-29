@@ -17,14 +17,14 @@ from keras import backend as K
 import keras_tuner as kt
 from pyfaidx import Fasta
 
-import Custom_Callbacks
-import Custom_Losses
-import Custom_Metrics
-import Custom_Models
-import Data_Functions
-import Genetic_Data_Pipeline
-import Helper_Functions
-import config
+from IEModules import Custom_Callbacks
+from IEModules import Custom_Losses
+from IEModules import Custom_Metrics
+from IEModules import Custom_Models
+from IEModules import Data_Functions
+from IEModules import Genetic_Data_Pipeline
+from IEModules import Helper_Functions
+from IEModules import config
 '''
 Run the code below in notebooks to get them to add modules to the path
 '''

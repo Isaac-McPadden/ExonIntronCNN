@@ -19,9 +19,9 @@ import keras_tuner as kt
 from pyfaidx import Fasta
 import matplotlib.pyplot as plt
 
-from config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
-DATA_DIR = "../Datasets/"
-MODEL_DIR = "../Models/"
+from IEModules.config import DATA_DIR, LOG_DIR, MODEL_DIR, MODULE_DIR, NOTEBOOK_DIR
+# DATA_DIR = "../Datasets/"
+# MODEL_DIR = "../Models/"
 
 
 def drop_exact_records(dataset: tf.data.Dataset, total_records, num_to_drop, seed=None):

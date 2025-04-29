@@ -17,7 +17,7 @@ import gc
 import keras_tuner as kt
 from pyfaidx import Fasta
 
-from config import (
+from IEModules.config import (
     DATA_DIR, 
     LOG_DIR, 
     MODEL_DIR, 
