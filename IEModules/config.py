@@ -17,7 +17,7 @@ MODEL_DIR    = PROJECT_ROOT / "Models"
 NOTEBOOK_DIR = PROJECT_ROOT / "Notebooks"
 
 '''
-MANUALLY CHANGE THIS EVERY EXPERIMENT
+CONVERT TO CLI LATER
 '''
 experiment_data_folder = DATA_DIR / "Experiment 01"
 experiment_folder = MODEL_DIR / "Experiment 01"
@@ -85,3 +85,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""   
+Todos:
+    Potentially, latest_checkpoint() sorts lexicographically could be fixed
+    Path(str) instead of passing strings to things that use paths.
+    Clear Keras session between trials to release GPU memory
+    Temp vars in config should be made into cli args
+    LR_state needs per trial json
+"""

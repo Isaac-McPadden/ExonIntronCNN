@@ -1,0 +1,13 @@
+Trial,Smoothing,Background,Early Rewarding,Size,Style,Dilation,Attention
+1,None,True,False,1,Incremental,Standard,None
+2,None,True,False,10,Mixed,Reduced,Some
+3,None,False,False,10,Mixed,Reduced,None
+4,None,False,False,1,Incremental,Standard,Some
+5,Custom,True,True,10,Mixed,Standard,Some
+6,Custom,True,False,1,Incremental,Reduced,None
+7,Custom,False,True,1,Incremental,Reduced,Some
+8,Custom,False,False,10,Mixed,Standard,None
+9,Proper,True,False,1,Incremental,Standard,None
+10,Proper,False,False,1,Incremental,Standard,None
+11,None,True,False,5x,Mixed,Reduced,Some
+12,None,False,False,5,Incremental,Reduced,Some
