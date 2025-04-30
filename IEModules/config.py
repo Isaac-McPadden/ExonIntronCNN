@@ -24,13 +24,14 @@ experiment_folder = MODEL_DIR / "Experiment 01"
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-EPOCH_UNIT_SIZE = int(1182630/5)
+EPOCH_UNIT_SIZE = int(1182630/5) # The approximate number of samples in a single unaugmented dataset
 EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
 DEFAULT_BATCH_SIZE = 28
-STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
+# STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
 SEED = 42
 PHYSICAL_BATCH_SIZE = 2
 ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
+STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE // PHYSICAL_BATCH_SIZE)
 
 # ── Model Parameters ──────────────────────────────────────────────────────────────────
 # Have to set this up in the experiment handler as they change every trial

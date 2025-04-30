@@ -81,7 +81,7 @@ def create_modular_dcnn_model(
         local_mask = LocalMaskLayer()(concat_input)          # bool (B, L, L)
 
         local_attn  = layers.MultiHeadAttention(
-                        num_heads=8,
+                        num_heads=4,
                         key_dim=10,
                         use_bias=False)(
                         query=concat_input,

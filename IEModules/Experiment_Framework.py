@@ -60,7 +60,7 @@ from IEModules.config import (
     MODEL_DIR,
     LOG_DIR,
     EPOCH_UNITS_PER_TRIAL,
-    DEFAULT_BATCH_SIZE,
+    PHYSICAL_BATCH_SIZE,
     STEPS_PER_EPOCH_UNIT,
     experiment_data_folder,
     LR_STATE_SAVE_SUBDIR,
@@ -191,7 +191,7 @@ class ExperimentHandler:
         model_dir: Path | str = MODEL_DIR,
         data_folder: Path | str = experiment_data_folder,
         resume: bool = True,
-        batch_size: int = DEFAULT_BATCH_SIZE,
+        batch_size: int = PHYSICAL_BATCH_SIZE,
     ) -> None:
         """Construct a new *ExperimentHandler*.
 
@@ -214,7 +214,7 @@ class ExperimentHandler:
             always starts fresh.
         batch_size : int, optional
             Mini-batch size fed to ``tf.data`` pipelines (default:
-            ``config.DEFAULT_BATCH_SIZE``).
+            ``config.PHYSICAL_BATCH_SIZE``).
         """
         self.csv_path = Path(csv_path)
         self.experiment = experiment_name
@@ -459,7 +459,7 @@ if __name__ == "__main__":
     parser.add_argument("csv", help="Path to experiment CSV file")
     parser.add_argument("name", help="Experiment folder name (under Models/)")
     parser.add_argument("--no-resume", action="store_true", help="Ignore existing checkpoints/history")
-    parser.add_argument("--batch", type=int, default=DEFAULT_BATCH_SIZE, help="Batch size")
+    parser.add_argument("--batch", type=int, default=PHYSICAL_BATCH_SIZE, help="Batch size")
     args = parser.parse_args()
 
     handler = ExperimentHandler(

@@ -1,5 +1,5 @@
 Trial,Smoothing,Background,Early Rewarding,Size,Style,Dilation,Attention
-1,None,True,False,1,Incremental,Standard,True
+1,None,True,False,1,Incremental,Standard,False
 2,None,True,False,10,Mixed,Reduced,True
 3,None,False,False,10,Mixed,Reduced,False
 4,None,False,False,1,Incremental,Standard,True
