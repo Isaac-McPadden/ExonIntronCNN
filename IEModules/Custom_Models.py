@@ -25,28 +25,25 @@ def tile_to_batch(z):
     return tf.tile(pe, [tf.shape(x)[0], 1, 1])
 
 @utils.register_keras_serializable()
-class LocalMaskLayer(layers.Layer):
-    def __init__(self, radius=3, **kwargs):
-        """
-        Args:
-            radius (int): The allowed distance for positions (default 3).
-        """
-        super(LocalMaskLayer, self).__init__(**kwargs)
+class LocalMaskLayer(tf.keras.layers.Layer):
+    def __init__(self, radius: int = 3, **kwargs):
+        super().__init__(**kwargs)
         self.radius = radius
 
     def call(self, inputs):
-        seq_len = tf.shape(inputs)[1]
-        i = tf.range(seq_len)[:, None]
-        j = tf.range(seq_len)[None, :]
-        mask = tf.cast(tf.abs(i - j) <= self.radius, tf.float32)
-        mask = tf.expand_dims(mask, 0)  # shape: (1, seq_len, seq_len)
-        mask = tf.tile(mask, [tf.shape(inputs)[0], 1, 1])  # shape: (batch, seq_len, seq_len)
-        return mask
+        L = tf.shape(inputs)[1]            # sequence length
+        i = tf.range(L)[:, None]
+        j = tf.range(L)[None, :]
+        mask = tf.abs(i - j) <= self.radius        # bool
+        mask = tf.expand_dims(mask, 0)             # (1, L, L)
+        return tf.tile(mask, [tf.shape(inputs)[0], 1, 1])  # (B, L, L)
 
+    # ——— added for (de)serialization ———
     def get_config(self):
-        config = super(LocalMaskLayer, self).get_config()
-        config.update({'radius': self.radius})
+        config = super().get_config()
+        config.update({"radius": self.radius})
         return config
+
 
 
 # Helper fn to adjust dilation rates.
@@ -81,10 +78,19 @@ def create_modular_dcnn_model(
     
     # Option 1: Local Masked Attention after positional encoding
     if use_local_attention:
-        local_mask = LocalMaskLayer()(concat_input)
-        local_attn = layers.Attention(use_scale=True)([concat_input, concat_input], attention_mask=local_mask)
-        # Residual connection
-        concat_input = layers.Add()([concat_input, local_attn])
+        local_mask = LocalMaskLayer()(concat_input)          # bool (B, L, L)
+
+        local_attn  = layers.MultiHeadAttention(
+                        num_heads=8,
+                        key_dim=10,
+                        use_bias=False)(
+                        query=concat_input,
+                        value=concat_input,
+                        key=concat_input,
+                        attention_mask=local_mask)
+
+        concat_input = layers.Concatenate(axis=-1)(
+                        [concat_input, local_attn])
     
     # Hyperparameters for dropout
     early_dropout = 0.1
@@ -163,7 +169,7 @@ def create_modular_dcnn_model(
     # Option 3: Final Attention to capture which outputs are most important
     if use_final_attention:
         final_attn = layers.MultiHeadAttention(num_heads=4, key_dim=32, dropout=0.1)(second_concat, second_concat)
-        second_concat = layers.Add()([second_concat, final_attn])
+        second_concat = layers.Concatenate()([second_concat, final_attn])
     
     # Instead of flattening, use Conv1D (kernel_size=1) as dense layers.
     dense = layers.Conv1D(128, kernel_size=1, activation='relu')(second_concat)
@@ -178,6 +184,8 @@ def create_modular_dcnn_model(
     outputs = layers.Conv1D(num_classes, kernel_size=1, activation='sigmoid')(dense)
     
     model = Model(inputs=inputs, outputs=outputs)
+    print("Model construction function ran perfectly")
+    model.summary(expand_nested=True)
     return model
 
 

@@ -853,13 +853,13 @@ custom_metrics_classes = [
 ]
 
 METRICS = [
-    CustomNoBackgroundAUC, # PR-AUC, most important metric
-    CustomNoBackgroundF1Score,
-    # CustomFalsePositiveDistance, # Not actually that useful
-    # CustomBackgroundOnlyF1Score, # Definitely not useful
-    CustomNoBackgroundAccuracy, # For kicks, useless for sparse data
-    CustomNoBackgroundPrecision,
-    CustomNoBackgroundRecall,
+    CustomNoBackgroundAUC(curve='PR'), # PR-AUC, most important metric
+    CustomNoBackgroundF1Score(num_classes=5, threshold=0.5, average='weighted'),
+    # CustomFalsePositiveDistance(num_classes=5, threshold=0.5, window=100), # Not actually that useful
+    # CustomBackgroundOnlyF1Score(num_classes=5, threshold=0.5, average='weighted'), # Definitely not useful
+    CustomNoBackgroundAccuracy(threshold=0.5), # For kicks, useless for sparse data
+    CustomNoBackgroundPrecision(threshold=0.5, average='weighted'),
+    CustomNoBackgroundRecall(threshold=0.5, average='weighted'),
     CustomConditionalF1Score(filter_mode='pred', name="conditional_f1_pred"),  # 'pred' 'true' or 'either'
     CustomConditionalF1Score(filter_mode='true', name="conditional_f1_true"),  # 'pred' 'true' or 'either'
 ]

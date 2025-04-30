@@ -54,6 +54,7 @@ from IEModules import (
     Custom_Losses,
     Helper_Functions,
     Custom_Metrics,
+    Custom_Optimizers,
 )
 from IEModules.config import (
     MODEL_DIR,
@@ -250,7 +251,7 @@ class ExperimentHandler:
                     m(num_classes=5) if "num_classes" in m.__init__.__code__.co_varnames else m()
                     for m in Custom_Metrics.METRICS
                 ]                    
-                model.compile(optimizer=optimizers.Adam(),
+                model.compile(optimizer=Custom_Optimizers.AccumOptimizer(accum_steps=cfg.ACCUM_STEPS),
                             loss=loss_fn,
                             metrics=metrics)
 
@@ -336,21 +337,38 @@ class ExperimentHandler:
 
     # ---------------- Model/loss building ------------------------------
     def _build_model(self, row: pd.Series):
-        """Instantiate and compile a model based on CSV hyper-parameters."""
-        dilation_mult = float(row.get("Dilation", 1.0))
-        use_attention = bool(row.get("Attention", False))
+        """Instantiate and compile a model based on CSV hyper‑parameters."""
+                # Robustly convert the “Dilation” CSV column to a float.
+        raw_dilation = row.get("Dilation", 1.0)
+        if isinstance(raw_dilation, (int, float)):
+            dilation_mult = float(raw_dilation)
+        else:
+            # Handle common non‑numeric tokens such as “Standard”, "None", or empty strings.
+            try:
+                dilation_mult = float(raw_dilation)
+            except (TypeError, ValueError):
+                dilation_mult = 1.0  # default
+
+        raw_att = row.get("Attention", False)
+        if isinstance(raw_att, str):
+            use_attention = raw_att.strip().lower() in ("true", "1", "yes", "y")
+        else:
+            use_attention = bool(raw_att)
+        
+        # if we're cutting out the background channel, only emit 4 outputs
+        background_removed = not bool(row.get("Background", False))      
+        num_classes = 4 if background_removed else 5
+
         model = Custom_Models.create_modular_dcnn_model(
             dilation_multiplier=dilation_mult,
             use_local_attention=use_attention,
             use_long_range_attention=use_attention,
             use_final_attention=use_attention,
+            num_classes=num_classes
         )
         loss_fn = self._select_loss(row)
-        metrics = [
-            m(num_classes=5) if "num_classes" in m.__init__.__code__.co_varnames else m()
-            for m in Custom_Metrics.METRICS
-        ]
-        model.compile(optimizer=optimizers.Adam(), loss=loss_fn, metrics=metrics)
+        metrics = [copy.deepcopy(m) for m in Custom_Metrics.METRICS]
+        model.compile(optimizer=Custom_Optimizers.AccumOptimizer(accum_steps=cfg.ACCUM_STEPS), loss=loss_fn, metrics=metrics)
         return model
 
     def _select_loss(self, row: pd.Series):
@@ -380,7 +398,11 @@ class ExperimentHandler:
                 smoothing_as_correct=cfg.DEFAULT_SMOOTHING_AS_CORRECT,
             )
         else:
-            BaseLoss = Custom_Losses.CustomBinaryCrossentropyLoss
+            BaseLoss = Custom_Losses.AllBinaryFocalLoss
+            # Remove 'threshold' since AllBinaryFocalLoss loss doesn't use it
+            # Threshold strictly required for custom "smoothing" comparison 
+            # to evaluate whether to reward or punish a guess in the loss calculation
+            kwargs.pop("threshold", None)
             kwargs.update(label_smoothing=cfg.LABEL_SMOOTHING if smoothing == "proper" else 0)
 
         if early_rewarding:
@@ -415,6 +437,8 @@ class ExperimentHandler:
             cbs.append(Custom_Losses.EpochUpdater(model.loss))
 
         # --- LR-scheduler state path (unique per trial) -----------------
+        lr_state_dir = trial_dir / LR_STATE_SAVE_SUBDIR
+        lr_state_dir.mkdir(parents=True, exist_ok=True) 
         lr_state_path = trial_dir / LR_STATE_SAVE_SUBDIR / LR_STATE_SAVE_FILENAME
         for cb in cbs:
             if isinstance(cb, callbacks.ModelCheckpoint):

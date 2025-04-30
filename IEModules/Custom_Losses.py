@@ -234,7 +234,7 @@ class CustomBinaryFocalLoss(losses.Loss):
 
 
 @utils.register_keras_serializable()
-class CustomBinaryCrossentropyLoss(losses.Loss):
+class AllBinaryFocalLoss(losses.Loss):
     def __init__(self,
                  dominant_class_index=DOMINANT_CLASS_INDEX,
                  # Dominant class multipliers
@@ -416,12 +416,12 @@ class SwitchingBinaryCrossentropyLoss(losses.Loss):
         self.swap_epoch = swap_epoch
 
         # Two instances of your custom loss
-        self.loss1 = CustomBinaryCrossentropyLoss(
+        self.loss1 = AllBinaryFocalLoss(
             **shared_kwargs, 
             smoothing_as_correct=True, 
             smoothing_multiplier=CORRECT_SMOOTHING_MULTIPLIER
             )
-        self.loss2 = CustomBinaryCrossentropyLoss(
+        self.loss2 = AllBinaryFocalLoss(
             **shared_kwargs, 
             smoothing_as_correct=False,
             smoothing_multiplier=INCORRECT_SMOOTHING_MULTIPLIER

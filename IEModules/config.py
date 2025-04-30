@@ -29,6 +29,8 @@ EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
 DEFAULT_BATCH_SIZE = 28
 STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
 SEED = 42
+PHYSICAL_BATCH_SIZE = 2
+ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
 
 # ── Model Parameters ──────────────────────────────────────────────────────────────────
 # Have to set this up in the experiment handler as they change every trial
