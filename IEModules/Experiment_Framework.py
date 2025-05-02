@@ -277,7 +277,7 @@ class ExperimentHandler:
             # ── End-of-trial clean-up ───────────────────────────────
             Helper_Functions.plot_train_val_curve(
                 history_object=type("H", (), {"history": running_hist})(),
-                training_target_variable="loss",
+                training_target_variable="no_background_auc",
             ).savefig(trial_dir / "train_val_curve.jpg")
             model.save(trial_dir / "final_model.keras")
 

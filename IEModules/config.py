@@ -17,14 +17,15 @@ MODEL_DIR    = PROJECT_ROOT / "Models"
 NOTEBOOK_DIR = PROJECT_ROOT / "Notebooks"
 
 '''
-CONVERT TO CLI LATER - Done in Experiment Framework, not done in Custom_Callbacks
+Default Vars
 '''
 experiment_data_folder = DATA_DIR / "Experiment 01"
 experiment_folder = MODEL_DIR / "Experiment 01"
+target_training_variable = "no_background_auc"
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-EPOCH_UNIT_SIZE = int(1182630/5) # The approximate number of samples in a single unaugmented dataset
+EPOCH_UNIT_SIZE = int(0.8*1182630/5) # The approximate number of samples in a single unaugmented dataset
 EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
 DEFAULT_BATCH_SIZE = 28
 # STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch

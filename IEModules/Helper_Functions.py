@@ -31,32 +31,32 @@ def plot_train_val_curve(history_object, training_target_variable: str):
     training_target_variable will be the name of one of the metrics being tracked
     '''
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(history_object.history[f'{training_target_variable.capitalize()}'], label=f'Training {training_target_variable.capitalize()}')
-    ax.plot(history_object.history[f'val_{training_target_variable}'], label=f'Validation {training_target_variable.capitalize()}')
-    ax.set_title(f'Train vs. Validation {training_target_variable.capitalize()}')
+    ax.plot(history_object.history[f'{training_target_variable}'], label=f'Training {training_target_variable}')
+    ax.plot(history_object.history[f'val_{training_target_variable}'], label=f'Validation {training_target_variable}')
+    ax.set_title(f'Train vs. Validation {training_target_variable}')
     ax.set_xlabel('Epoch')
-    ax.set_ylabel(training_target_variable.capitalize())
+    ax.set_ylabel(training_target_variable)
     ax.legend()
     plt.show()
     return fig 
 
 
-def save_history_to_json(history, metadata: str):
-    """
-    Saves the training history from a Keras model to a JSON file.
+# def save_history_to_json(history, metadata: str):
+#     """
+#     Saves the training history from a Keras model to a JSON file.
     
-    Parameters:
-        history: The History object returned by model.fit().
-        metadata (str): A string to prefix the filename for context.
-        Basically, once I've figured out a serial number system, it will be that
-    Returns:
-        str: The filename of the saved JSON file.
-    """
-    filename = f'{metadata}_training_history.json'
-    with open(filename, 'w') as f:
-        json.dump(history.history, f)
-        print(f'Saved {filename}')
-    return filename
+#     Parameters:
+#         history: The History object returned by model.fit().
+#         metadata (str): A string to prefix the filename for context.
+#         Basically, once I've figured out a serial number system, it will be that
+#     Returns:
+#         str: The filename of the saved JSON file.
+#     """
+#     filename = f'{metadata}_training_history.json'
+#     with open(filename, 'w') as f:
+#         json.dump(history.history, f)
+#         print(f'Saved {filename}')
+#     return filename
 
 def save_history_to_json(history, metadata: str, save_path: str = ""):
     """
