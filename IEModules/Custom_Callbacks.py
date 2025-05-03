@@ -32,7 +32,8 @@ from IEModules.config import (
     CHECKPOINT_SAVE_FREQ,
     LR_STATE_SAVE_SUBDIR,
     LR_STATE_SAVE_FILENAME,
-    experiment_folder
+    experiment_folder,
+    STEPS_PER_EPOCH_UNIT,
 )
 
 class TimeLimit(callbacks.Callback):
@@ -138,7 +139,36 @@ class SampleCountStopping(callbacks.Callback):
         if self.samples_processed >= self.max_samples:
             print(f"Reached target of {self.max_samples} samples. Stopping training.")
             self.model.stop_training = True
-            
+
+
+class BatchModelCheckpoint(callbacks.ModelCheckpoint):
+    """
+    A ModelCheckpoint that also saves immediately after the final training
+    batch of each epoch (i.e. before validation begins), using the same
+    filepath template and arguments as the standard checkpoint.
+    """
+    def __init__(self, filepath, steps_per_epoch, **kwargs):
+        """
+        Args:
+            filepath: same template you’d pass to ModelCheckpoint
+                      (e.g. ".../epoch-{epoch:03d}.keras")
+            steps_per_epoch: number of train batches per epoch
+            **kwargs: all the same keyword args you’d pass to ModelCheckpoint
+        """
+        super().__init__(filepath, **kwargs)
+        self.steps_per_epoch = steps_per_epoch
+        self._current_epoch = None
+
+    def on_epoch_begin(self, epoch, logs=None):
+        # track which epoch we’re in for later filename formatting
+        self._current_epoch = epoch
+
+    def on_train_batch_end(self, batch, logs=None):
+        # zero‐based batch index → check for last batch
+        if batch + 1 == self.steps_per_epoch:
+            # use the built‐in saving logic, passing the tracked epoch
+            self._save_model(self._current_epoch, logs)        
+
 
 class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
     """
@@ -231,6 +261,17 @@ checkpoint_cb = callbacks.ModelCheckpoint(
     save_freq=CHECKPOINT_SAVE_FREQ,
 )
 
+batch_checkpoint_cb = BatchModelCheckpoint(
+    filepath=str(checkpoint_dir / CHECKPOINT_FILENAME),
+    steps_per_epoch=STEPS_PER_EPOCH_UNIT,
+    monitor=CHECKPOINT_MONITOR,
+    mode=CHECKPOINT_MODE,
+    save_best_only=CHECKPOINT_SAVE_BEST_ONLY,
+    save_weights_only=CHECKPOINT_SAVE_WEIGHTS_ONLY,
+    mode = 'auto',
+    verbose = 1,
+)
+
 early_stopping_cb = callbacks.EarlyStopping(
     monitor=CHECKPOINT_MONITOR,
     mode=CHECKPOINT_MODE,
@@ -267,4 +308,5 @@ CALLBACKS = [
     checkpoint_cb,
     early_stopping_cb,
     reduce_lr_cb,
+    batch_checkpoint_cb,
     ]

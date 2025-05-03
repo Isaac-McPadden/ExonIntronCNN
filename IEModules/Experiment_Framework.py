@@ -268,6 +268,8 @@ class ExperimentHandler:
                     epochs=unit + 1,
                     initial_epoch=unit,
                     steps_per_epoch=STEPS_PER_EPOCH_UNIT,
+                    validation_steps=int(STEPS_PER_EPOCH_UNIT/8), # (80/10/10 TVT split 10=80/8)
+                    verbose = 1,
                     callbacks=cbs,
                 )
 
