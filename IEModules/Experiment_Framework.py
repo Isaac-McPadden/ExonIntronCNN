@@ -235,9 +235,16 @@ class ExperimentHandler:
             history_path = trial_dir / "history_full.json"
             running_hist = _load_running_history(history_path)
             start_unit = len(next(iter(running_hist.values()), []))
+            try:
+                lr_state_dir = trial_dir / "LR_State" / "reduce_lr_state.json"
+                lr_state_df = pd.read_json(lr_state_dir)
+                lr_state_dict = lr_state_df.to_dict()
+                lr_state = lr_state_dict["lr"]
+            except:
+                lr_state = None
 
             # ── Resume / build model ────────────────────────────────
-            ckpt_dir = trial_dir / "checkpoints"
+            ckpt_dir = trial_dir / "Checkpoints"
             model = None
             if self.resume_flag and (ckpt := latest_checkpoint(ckpt_dir)):
                 custom_objs = utils.get_custom_objects()
@@ -251,7 +258,10 @@ class ExperimentHandler:
                     m(num_classes=5) if "num_classes" in m.__init__.__code__.co_varnames else m()
                     for m in Custom_Metrics.METRICS
                 ]                    
-                model.compile(optimizer=Custom_Optimizers.AccumOptimizer(accum_steps=cfg.ACCUM_STEPS),
+                model.compile(optimizer=Custom_Optimizers.AccumOptimizer(
+                    accum_steps=cfg.ACCUM_STEPS,
+                    learning_rate=lr_state,
+                    ),
                             loss=loss_fn,
                             metrics=metrics)
 
@@ -293,7 +303,7 @@ class ExperimentHandler:
         and returns the trial directory path.
         """
         tdir = self.experiment_dir / f"Trial_{num:02d}"
-        (tdir / "checkpoints").mkdir(parents=True, exist_ok=True)
+        (tdir / "Checkpoints").mkdir(parents=True, exist_ok=True)
         return tdir
 
     # ---------------- Dataset helpers ----------------------------------

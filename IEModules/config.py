@@ -34,6 +34,22 @@ PHYSICAL_BATCH_SIZE = 2
 ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
 STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE // PHYSICAL_BATCH_SIZE)
 
+# ── Test Constants ──────────────────────────────────────────────────────────────────
+# EPOCH_UNIT_SIZE = 500 # The approximate number of samples in a single unaugmented dataset
+# EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
+# DEFAULT_BATCH_SIZE = 20
+# # STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
+# SEED = 42
+# PHYSICAL_BATCH_SIZE = 2
+# ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
+# STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE // PHYSICAL_BATCH_SIZE)
+# '''
+# Default Vars
+# '''
+# experiment_data_folder = DATA_DIR / "PROGRAM TEST 01"
+# experiment_folder = MODEL_DIR / "PROGRAM TEST 01"
+# target_training_variable = "no_background_auc"
+
 # ── Model Parameters ──────────────────────────────────────────────────────────────────
 # Have to set this up in the experiment handler as they change every trial
 # input_dim=5,

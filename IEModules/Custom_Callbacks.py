@@ -147,7 +147,7 @@ class BatchModelCheckpoint(callbacks.ModelCheckpoint):
     batch of each epoch (i.e. before validation begins), using the same
     filepath template and arguments as the standard checkpoint.
     """
-    def __init__(self, filepath, steps_per_epoch, **kwargs):
+    def __init__(self, filepath, steps_per_epoch, logs=None, **kwargs):
         """
         Args:
             filepath: same template you’d pass to ModelCheckpoint
@@ -167,69 +167,92 @@ class BatchModelCheckpoint(callbacks.ModelCheckpoint):
         # zero‐based batch index → check for last batch
         if batch + 1 == self.steps_per_epoch:
             # use the built‐in saving logic, passing the tracked epoch
-            self._save_model(self._current_epoch, logs)        
+            self._save_model(self._current_epoch, logs=None)        
 
 
 class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
     """
-    A subclass of ReduceLROnPlateau that adds the ability
-    to save and load its state. It automatically saves its state at the end of every epoch.
+    ReduceLROnPlateau that can be resumed across runs.
+    Saves / restores wait-counter, cooldown, best metric **and** the
+    exact optimizer learning-rate.
     """
     def __init__(self, *args, state_save_filepath=None, **kwargs):
-        """
-        Initialize the scheduler with an optional file path for state saving.
-        
-        Args:
-            state_save_filepath (str): The file path where the state will be saved at the end of each epoch.
-        """
-        super(StatefulReduceLROnPlateau, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.state_save_filepath = state_save_filepath
+        self._saved_lr = None          #  <-- populated by `set_state`
 
+    # ------------------------------------------------------------------ #
+    #                      STATE SERIALISATION                           #
+    # ------------------------------------------------------------------ #
     def get_state(self):
-        """
-        Return a dictionary containing the scheduler state.
-        """
-        # Key state variables include the wait counter, cooldown counter, and best metric value.
+        """Return a dict that fully recreates the scheduler state."""
+        lr = None
+        if self.model is not None:                     # model set after build()
+            lr = float(K.get_value(self.model.optimizer.lr))
         return {
-            "wait": self.wait,
+            "wait":             self.wait,
             "cooldown_counter": self.cooldown_counter,
-            "best": self.best,
+            "best":             self.best,
+            "lr":               lr,
         }
 
     def set_state(self, state):
-        """
-        Restore the scheduler state from a dictionary.
-        """
-        self.wait = state.get("wait", 0)
+        """Restore internal counters **and** remember the LR to re-inject later."""
+        self.wait             = state.get("wait", 0)
         self.cooldown_counter = state.get("cooldown_counter", 0)
-        if "best" in state:
-            self.best = state["best"]
-        else:
-            self.best = float("inf") if self.mode == "min" else -float("inf")
+        self.best             = state.get(
+            "best",
+            float("inf") if self.mode == "min" else -float("inf")
+        )
+        self._saved_lr = state.get("lr", None)
 
+    # ------------------------------------------------------------------ #
+    #               HOOKS THAT RE-APPLY THE SAVED LR                     #
+    # ------------------------------------------------------------------ #
+    def set_model(self, model):
+        """Called by Keras just before training starts."""
+        super().set_model(model)
+        if self._saved_lr is not None:
+            try:                                    # Keras ≥2.13 uses `.lr`
+                K.set_value(self.model.optimizer.lr, self._saved_lr)
+            except AttributeError:                  # if using `.learning_rate`
+                K.set_value(self.model.optimizer.learning_rate, self._saved_lr)
+
+    def on_train_begin(self, logs=None):
+        """Guard-rail in case `set_model` wasn't enough (very rare)."""
+        if self._saved_lr is not None:
+            try:
+                K.set_value(self.model.optimizer.lr, self._saved_lr)
+            except AttributeError:
+                K.set_value(self.model.optimizer.learning_rate, self._saved_lr)
+        super().on_train_begin(logs)
+
+    # ------------------------------------------------------------------ #
+    #                     SAVE–ON-TRAIN-AND-EPOCH-END                              #
+    # ------------------------------------------------------------------ #
     def save_state_to_file(self, filepath):
-        """
-        Save the scheduler state to a JSON file.
-        """
-        state = self.get_state()
-        with open(filepath, 'w') as f:
-            json.dump(state, f)
+        with open(filepath, "w") as f:
+            json.dump(self.get_state(), f)
         print(f"ReduceLROnPlateau state saved to {filepath}")
 
     def load_state_from_file(self, filepath):
-        """
-        Load the scheduler state from a JSON file.
-        """
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             state = json.load(f)
         self.set_state(state)
         print(f"ReduceLROnPlateau state loaded from {filepath}")
 
     def on_epoch_end(self, epoch, logs=None):
-        """
-        Call parent on_epoch_end and then save state if a file path is provided.
-        """
         super().on_epoch_end(epoch, logs)
+        if self.state_save_filepath:
+            self.save_state_to_file(self.state_save_filepath)
+    
+    def on_train_end(self, logs=None):
+        """
+        Called after the final training batch of every epoch but *before*
+        validation starts.  Perfect place to persist LR-scheduler state so
+        killing the job during validation costs you nothing.
+        """
+        super().on_train_end(logs)
         if self.state_save_filepath:
             self.save_state_to_file(self.state_save_filepath)
 
@@ -268,7 +291,6 @@ batch_checkpoint_cb = BatchModelCheckpoint(
     mode=CHECKPOINT_MODE,
     save_best_only=CHECKPOINT_SAVE_BEST_ONLY,
     save_weights_only=CHECKPOINT_SAVE_WEIGHTS_ONLY,
-    mode = 'auto',
     verbose = 1,
 )
 
