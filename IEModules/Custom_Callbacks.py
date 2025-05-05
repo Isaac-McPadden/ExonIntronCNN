@@ -34,6 +34,8 @@ from IEModules.config import (
     LR_STATE_SAVE_FILENAME,
     experiment_folder,
     STEPS_PER_EPOCH_UNIT,
+    PREVAL_CHECKPOINT_MONITOR,
+    PREVAL_CHECKPOINT_FILENAME,
 )
 
 class TimeLimit(callbacks.Callback):
@@ -160,14 +162,14 @@ class BatchModelCheckpoint(callbacks.ModelCheckpoint):
         self._current_epoch = None
 
     def on_epoch_begin(self, epoch, logs=None):
-        # track which epoch we’re in for later filename formatting
-        self._current_epoch = epoch
+        self._cur_epoch = epoch
 
     def on_train_batch_end(self, batch, logs=None):
-        # zero‐based batch index → check for last batch
         if batch + 1 == self.steps_per_epoch:
-            # use the built‐in saving logic, passing the tracked epoch
-            self._save_model(self._current_epoch, logs=None)        
+            # Keras 3 signature: epoch, batch, logs
+            self._save_model(epoch=self._cur_epoch,
+                             batch=batch,
+                             logs=logs or {})
 
 
 class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
@@ -188,7 +190,10 @@ class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
         """Return a dict that fully recreates the scheduler state."""
         lr = None
         if self.model is not None:                     # model set after build()
-            lr = float(K.get_value(self.model.optimizer.lr))
+            lr_var = getattr(self.model.optimizer, "lr",
+                              getattr(self.model.optimizer, "learning_rate", None))
+            if lr_var is not None:
+                lr = float(tf.convert_to_tensor(lr_var).numpy())
         return {
             "wait":             self.wait,
             "cooldown_counter": self.cooldown_counter,
@@ -213,18 +218,18 @@ class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
         """Called by Keras just before training starts."""
         super().set_model(model)
         if self._saved_lr is not None:
-            try:                                    # Keras ≥2.13 uses `.lr`
-                K.set_value(self.model.optimizer.lr, self._saved_lr)
-            except AttributeError:                  # if using `.learning_rate`
-                K.set_value(self.model.optimizer.learning_rate, self._saved_lr)
+            lr_var = getattr(self.model.optimizer, "lr",
+                             getattr(self.model.optimizer, "learning_rate", None))
+            if lr_var is not None:
+                lr_var.assign(self._saved_lr)
 
     def on_train_begin(self, logs=None):
         """Guard-rail in case `set_model` wasn't enough (very rare)."""
         if self._saved_lr is not None:
-            try:
-                K.set_value(self.model.optimizer.lr, self._saved_lr)
-            except AttributeError:
-                K.set_value(self.model.optimizer.learning_rate, self._saved_lr)
+            lr_var = getattr(self.model.optimizer, "lr",
+                             getattr(self.model.optimizer, "learning_rate", None))
+            if lr_var is not None:
+                lr_var.assign(self._saved_lr)
         super().on_train_begin(logs)
 
     # ------------------------------------------------------------------ #
@@ -256,6 +261,15 @@ class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
         if self.state_save_filepath:
             self.save_state_to_file(self.state_save_filepath)
 
+
+@utils.register_keras_serializable()
+class EpochSetter(callbacks.Callback):
+    def on_epoch_begin(self, epoch, logs=None):
+        # this var now lives on GPU, so assign() is safe
+        self.model.loss.current_epoch.assign(epoch)
+        
+    def get_config(self):
+        return {}
 # ===== Example Usage =====
 
 # Set up the custom callback with a path for auto-saving state.
@@ -285,9 +299,9 @@ checkpoint_cb = callbacks.ModelCheckpoint(
 )
 
 batch_checkpoint_cb = BatchModelCheckpoint(
-    filepath=str(checkpoint_dir / CHECKPOINT_FILENAME),
+    filepath=str(checkpoint_dir / PREVAL_CHECKPOINT_FILENAME),
     steps_per_epoch=STEPS_PER_EPOCH_UNIT,
-    monitor=CHECKPOINT_MONITOR,
+    monitor=PREVAL_CHECKPOINT_MONITOR,
     mode=CHECKPOINT_MODE,
     save_best_only=CHECKPOINT_SAVE_BEST_ONLY,
     save_weights_only=CHECKPOINT_SAVE_WEIGHTS_ONLY,

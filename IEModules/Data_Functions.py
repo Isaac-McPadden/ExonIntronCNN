@@ -90,7 +90,7 @@ def prep_dataset_from_tfrecord(
     batch_size=28,
     compression_type='GZIP',
     shuffled = False,
-    shuffle_buffer=25000,
+    shuffle_buffer=250,
     total_records=None,
     num_to_drop=None,
     seed=None,

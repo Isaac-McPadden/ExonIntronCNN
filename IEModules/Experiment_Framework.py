@@ -38,6 +38,7 @@ import tempfile
 import shutil
 import gc
 import copy
+import inspect
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -225,68 +226,104 @@ class ExperimentHandler:
         self.trials_df = pd.read_csv(self.csv_path)
         self.trials_df.columns = [c.strip() for c in self.trials_df.columns]
         self.base_data_dir = Path(data_folder) / Path("TestValTrain")
+    
+    def _trial_complete(self, trial_dir: Path) -> bool:
+        ckpt_dir = trial_dir / "Checkpoints"
+        if not ckpt_dir.is_dir():
+            return False
+
+        # any file that begins with 'epoch-010-val' and ends in '.keras'
+        pattern = re.compile(fr"epoch-{EPOCH_UNITS_PER_TRIAL:03d}-val.*\.keras$")
+        return any(pattern.match(f.name) for f in ckpt_dir.iterdir())
+    
+    
+    # Helper to merge history fragments
+    def _merge_histories(h1: callbacks.History, h2: callbacks.History):
+        for k, v in h2.history.items():
+            h1.history.setdefault(k, []).extend(v)
+        return h1
 
     # ────────────────────────────────────────────────────────────────────
     def run(self):
         """Iterate over CSV rows and execute all trials sequentially."""
         for _, row in self.trials_df.iterrows():
+            trial_dir_check = self.experiment_dir / f"Trial_{row['Trial']:02d}"
+            if self._trial_complete(trial_dir_check):
+                print(f"[Skip] Trial {row['Trial']:02d} is already complete.")
+                continue
+
             trial_id = int(row["Trial"])
             trial_dir = self._prepare_trial_folder(trial_id)
             history_path = trial_dir / "history_full.json"
             running_hist = _load_running_history(history_path)
             start_unit = len(next(iter(running_hist.values()), []))
-            try:
-                lr_state_dir = trial_dir / "LR_State" / "reduce_lr_state.json"
-                lr_state_df = pd.read_json(lr_state_dir)
-                lr_state_dict = lr_state_df.to_dict()
-                lr_state = lr_state_dict["lr"]
-            except:
-                lr_state = None
 
-            # ── Resume / build model ────────────────────────────────
+            # Determine loss switching parameters
+            early_rewarding = bool(row["Early Rewarding"])
+            swap_epoch = cfg.SWAP_EPOCH if early_rewarding else 0
+            total_units = EPOCH_UNITS_PER_TRIAL
+
+            # Load or build model
             ckpt_dir = trial_dir / "Checkpoints"
             model = None
             if self.resume_flag and (ckpt := latest_checkpoint(ckpt_dir)):
                 custom_objs = utils.get_custom_objects()
                 model = models.load_model(ckpt, compile=False, custom_objects=custom_objs)
+                self.resume_flag = False
+
             if model is None:
-                backend.clear_session(); gc.collect()
+                backend.clear_session()
+                gc.collect()
                 model = self._build_model(row)
-            else:                                   # resume
-                loss_fn = self._select_loss(row)
-                metrics = [
-                    m(num_classes=5) if "num_classes" in m.__init__.__code__.co_varnames else m()
-                    for m in Custom_Metrics.METRICS
-                ]                    
-                model.compile(optimizer=Custom_Optimizers.AccumOptimizer(
-                    accum_steps=cfg.ACCUM_STEPS,
-                    learning_rate=lr_state,
-                    ),
-                            loss=loss_fn,
-                            metrics=metrics)
 
-            # ── Loop over epoch-units ───────────────────────────────
-            for unit in range(start_unit, EPOCH_UNITS_PER_TRIAL):
-                print(f"\nTrial {trial_id:02d} • Epoch-Unit {unit+1}/{EPOCH_UNITS_PER_TRIAL}")
+            # Prepare optimizer and metrics
+            optimizer = Custom_Optimizers.AccumOptimizer(accum_steps=cfg.ACCUM_STEPS)
+            metrics = Custom_Metrics.build_metrics(num_classes=5, thresh=0.5)
 
-                train_ds, val_ds = self._load_datasets(row)
-                cbs = self._make_callbacks(row, unit, trial_dir, model)
+            # Extract concrete losses
+            loss_attr = model.loss
+            # If switching loss, the build created nested losses on the loss object
+            if early_rewarding and hasattr(loss_attr, 'loss1') and hasattr(loss_attr, 'loss2'):
+                loss1 = loss_attr.loss1
+                loss2 = loss_attr.loss2
+            else:
+                loss1 = loss2 = model.loss
 
-                history = model.fit(
-                    train_ds,
-                    validation_data=val_ds,
-                    epochs=unit + 1,
-                    initial_epoch=unit,
+
+
+            # Define a function to run a phase
+            def _run_phase(phase_loss, start, end, initial_epoch):
+                model.compile(optimizer=optimizer, loss=phase_loss, metrics=metrics)
+                phase_cbs = self._make_callbacks(row, start, trial_dir, model)
+                return model.fit(
+                    train_ds, val_ds,
+                    epochs=end,
+                    initial_epoch=initial_epoch,
                     steps_per_epoch=STEPS_PER_EPOCH_UNIT,
-                    validation_steps=int(STEPS_PER_EPOCH_UNIT/8), # (80/10/10 TVT split 10=80/8)
-                    verbose = 1,
-                    callbacks=cbs,
+                    validation_steps=int(STEPS_PER_EPOCH_UNIT / 8),
+                    callbacks=phase_cbs,
+                    verbose=1,
                 )
 
-                _extend_history(running_hist, history.history)
-                _atomic_dump(running_hist, history_path)
+            # Load datasets once
+            train_ds, val_ds = self._load_datasets(row)
 
-            # ── End-of-trial clean-up ───────────────────────────────
+            # Execute phases
+            if early_rewarding and swap_epoch < total_units:
+                print(f"\nTrial {trial_id:02d} • Phase 1: Epoch-Units 1–{swap_epoch}")
+                history1 = _run_phase(loss1, 0, swap_epoch, 0)
+                print(f"\nTrial {trial_id:02d} • Phase 2: Epoch-Units {swap_epoch+1}–{total_units}")
+                history2 = _run_phase(loss2, swap_epoch, total_units, swap_epoch)
+                # Merge into a single History-like object
+                history = _merge_histories(history1, history2)
+            else:
+                history = _run_phase(model.loss, start_unit, total_units, start_unit)
+
+            # Persist running history and checkpoint
+            _extend_history(running_hist, history.history)
+            _atomic_dump(running_hist, history_path)
+
+            # End-of-trial cleanup
             Helper_Functions.plot_train_val_curve(
                 history_object=type("H", (), {"history": running_hist})(),
                 training_target_variable="no_background_auc",
@@ -379,16 +416,16 @@ class ExperimentHandler:
             num_classes=num_classes
         )
         loss_fn = self._select_loss(row)
-        metrics = [copy.deepcopy(m) for m in Custom_Metrics.METRICS]
+        metrics = Custom_Metrics.build_metrics(num_classes=5, thresh=0.5)
         model.compile(optimizer=Custom_Optimizers.AccumOptimizer(accum_steps=cfg.ACCUM_STEPS), loss=loss_fn, metrics=metrics)
         return model
 
     def _select_loss(self, row: pd.Series):
-        """Return an appropriately parameterised loss object for the trial."""
-        early_rewarding = bool(row["Early Rewarding"])
+        """Return a parameterised base loss object for the trial."""
         smoothing = str(row["Smoothing"]).lower()
         background_removed = not bool(row["Background"])
 
+        # common kwargs for both loss types
         kwargs = dict(
             dominant_class_index=cfg.DOMINANT_CLASS_INDEX,
             dominant_correct_multiplier=cfg.DOMINANT_CORRECT_MULTIPLIER,
@@ -403,6 +440,7 @@ class ExperimentHandler:
             focal_alpha=cfg.FOCAL_ALPHA,
         )
 
+        # pick base loss and adjust kwargs for smoothing
         if smoothing == "custom":
             BaseLoss = Custom_Losses.CustomBinaryFocalLoss
             kwargs.update(
@@ -411,22 +449,14 @@ class ExperimentHandler:
             )
         else:
             BaseLoss = Custom_Losses.AllBinaryFocalLoss
-            # Remove 'threshold' since AllBinaryFocalLoss loss doesn't use it
-            # Threshold strictly required for custom "smoothing" comparison 
-            # to evaluate whether to reward or punish a guess in the loss calculation
             kwargs.pop("threshold", None)
-            kwargs.update(label_smoothing=cfg.LABEL_SMOOTHING if smoothing == "proper" else 0)
-
-        if early_rewarding:
-            kwargs["swap_epoch"] = cfg.SWAP_EPOCH
-            LossClass = (
-                Custom_Losses.SwitchingFocalLoss
-                if BaseLoss is Custom_Losses.CustomBinaryFocalLoss
-                else Custom_Losses.SwitchingBinaryCrossentropyLoss
+            kwargs.update(label_smoothing=
+                        cfg.LABEL_SMOOTHING if smoothing == "proper" else 0
             )
-        else:
-            LossClass = BaseLoss
-        return LossClass(**kwargs)
+
+        # **NO** more switchable wrapping here—just return the base loss
+        return BaseLoss(**kwargs)
+
 
     # ---------------- Callbacks ----------------------------------------
     def _make_callbacks(
@@ -445,16 +475,22 @@ class ExperimentHandler:
         cbs.append(callbacks.TensorBoard(log_dir=tb_dir, histogram_freq=1))
 
         # --- Epoch updater for switchable loss --------------------------
-        if hasattr(model.loss, "epoch_var"):
-            cbs.append(Custom_Losses.EpochUpdater(model.loss))
+        current_loss = model.loss
+        if getattr(current_loss, "switchable", False):
+            cbs.append(Custom_Callbacks.EpochSetter())
+
 
         # --- LR-scheduler state path (unique per trial) -----------------
         lr_state_dir = trial_dir / LR_STATE_SAVE_SUBDIR
         lr_state_dir.mkdir(parents=True, exist_ok=True) 
         lr_state_path = trial_dir / LR_STATE_SAVE_SUBDIR / LR_STATE_SAVE_FILENAME
         for cb in cbs:
-            if isinstance(cb, callbacks.ModelCheckpoint):
-                cb.filepath = str(trial_dir / cfg.CHECKPOINT_SUBDIR / cfg.CHECKPOINT_FILENAME)
+            if isinstance(cb, Custom_Callbacks.BatchModelCheckpoint):
+                cb.filepath = str(trial_dir / cfg.CHECKPOINT_SUBDIR
+                                            / cfg.PREVAL_CHECKPOINT_FILENAME)
+            elif isinstance(cb, callbacks.ModelCheckpoint):
+                cb.filepath = str(trial_dir / cfg.CHECKPOINT_SUBDIR
+                                            / cfg.CHECKPOINT_FILENAME)
             if isinstance(cb, Custom_Callbacks.StatefulReduceLROnPlateau):
                 cb.state_save_filepath = lr_state_path
                 if lr_state_path.exists() and self.resume_flag and unit_idx == 0:

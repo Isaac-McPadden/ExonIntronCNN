@@ -840,7 +840,24 @@ class CustomBackgroundOnlyF1Score(metrics.Metric):
         })
         return config
     
-    
+def build_metrics(num_classes=5, thresh=0.5):
+    return [
+        CustomNoBackgroundAUC(curve="PR", name="no_background_auc"),
+        CustomNoBackgroundF1Score(num_classes=num_classes,
+                                  threshold=thresh, average="weighted",
+                                  name="no_background_f1"),
+        CustomNoBackgroundAccuracy(threshold=thresh,
+                                   name="no_background_accuracy"),
+        CustomNoBackgroundPrecision(threshold=thresh, average="weighted",
+                                    name="no_background_precision"),
+        CustomNoBackgroundRecall(threshold=thresh, average="weighted",
+                                 name="no_background_recall"),
+        CustomConditionalF1Score(filter_mode="pred",
+                                 name="conditional_f1_pred"),
+        CustomConditionalF1Score(filter_mode="true",
+                                 name="conditional_f1_true"),
+    ]  
+      
 custom_metrics_classes = [
     CustomNoBackgroundF1Score, 
     CustomConditionalF1Score, 
@@ -852,17 +869,7 @@ custom_metrics_classes = [
     CustomBackgroundOnlyF1Score
 ]
 
-METRICS = [
-    CustomNoBackgroundAUC(curve='PR'), # PR-AUC, most important metric
-    CustomNoBackgroundF1Score(num_classes=5, threshold=0.5, average='weighted'),
-    # CustomFalsePositiveDistance(num_classes=5, threshold=0.5, window=100), # Not actually that useful
-    # CustomBackgroundOnlyF1Score(num_classes=5, threshold=0.5, average='weighted'), # Definitely not useful
-    CustomNoBackgroundAccuracy(threshold=0.5), # For kicks, useless for sparse data
-    CustomNoBackgroundPrecision(threshold=0.5, average='weighted'),
-    CustomNoBackgroundRecall(threshold=0.5, average='weighted'),
-    CustomConditionalF1Score(filter_mode='pred', name="conditional_f1_pred"),  # 'pred' 'true' or 'either'
-    CustomConditionalF1Score(filter_mode='true', name="conditional_f1_true"),  # 'pred' 'true' or 'either'
-]
+
 
 def main():
     for item in custom_metrics_classes:
