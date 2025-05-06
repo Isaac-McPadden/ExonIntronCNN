@@ -43,8 +43,7 @@ class LocalMaskLayer(tf.keras.layers.Layer):
         config = super().get_config()
         config.update({"radius": self.radius})
         return config
-
-
+    
 
 # Helper fn to adjust dilation rates.
 @utils.register_keras_serializable()
@@ -59,9 +58,9 @@ def create_modular_dcnn_model(
     input_dim=5,
     sequence_length=5000,
     num_classes=5,
-    use_local_attention=True,
+    use_local_attention=False,
     use_long_range_attention=True,
-    use_final_attention=True,
+    use_final_attention=False,
     dilation_multiplier=1.0  # New parameter to scale the dilation rates
 ):
     
@@ -156,19 +155,49 @@ def create_modular_dcnn_model(
     dcnn = layers.Add()([dcnn, skip])
     
     # Concatenate inputs from different paths
-    second_concat = layers.Concatenate(axis=-1)([concat_input, cnn, dcnn, low_dcnn])
+    second_concat = layers.Concatenate(axis=-1)([cnn, dcnn, low_dcnn])
     
     # Option 2: Long-range Attention after pooling the final convolution outputs
     if use_long_range_attention:
-        pool_size = 10  # You can adjust the pooling factor as needed.
-        pooled = layers.MaxPooling1D(pool_size=pool_size, padding='same')(second_concat)
-        long_attn = layers.MultiHeadAttention(num_heads=4, key_dim=32, dropout=0.1)(pooled, pooled)
-        long_attn_upsampled = layers.UpSampling1D(size=pool_size)(long_attn)
-        second_concat = layers.Concatenate(axis=-1)([second_concat, long_attn_upsampled])
+        pool_size = 10  # adjust to taste
+        # 1) pool and normalize
+        pooled = layers.MaxPooling1D(pool_size=pool_size, padding="same")(second_concat)
+        pooled_norm = layers.LayerNormalization(epsilon=1e-5)(pooled)
+
+        # 2) instantiate your GroupQueryAttention
+        long_range_attn = layers.GroupQueryAttention(
+            head_dim=32,              # embedding per head
+            num_query_heads=8,        # number of query heads
+            num_key_value_heads=1,    # share K/V across heads
+            dropout=0.1,
+            use_bias=True,            # defaults
+            flash_attention=False     # you can also omit this arg
+        )
+
+        # 3) apply it: (query, value[, key]) — here key defaults to value
+        long_attn_out = long_range_attn(
+            pooled_norm,
+            pooled_norm,
+        )
+
+        # 4) upsample back and stitch into your main tensor
+        long_attn_up = layers.UpSampling1D(size=pool_size)(long_attn_out)
+        # 1) Compute a sigmoid gate from the attention output
+        gate = layers.Dense(
+            long_attn_up.shape[-1],   # match attn_dim
+            activation="sigmoid",
+            name="b_attn_gate"
+        )(long_attn_up)               # (batch, seq, attn_dim)
+
+        # 2) Blend: gated_attn = gate * attn_up
+        gated_attn = layers.Multiply(name="b_attn_gated")([gate, long_attn_up])
+
+        # 3) Inject back—here we concat original and gated-attention
+        second_concat = layers.Concatenate(axis=-1)([second_concat, gated_attn])
     
     # Option 3: Final Attention to capture which outputs are most important
     if use_final_attention:
-        final_attn = layers.MultiHeadAttention(num_heads=4, key_dim=32, dropout=0.1)(second_concat, second_concat)
+        final_attn = layers.MultiHeadAttention(num_heads=4, key_dim=32, dropout=0.1, kernel = "linformer")(second_concat, second_concat)
         second_concat = layers.Concatenate()([second_concat, final_attn])
     
     # Instead of flattening, use Conv1D (kernel_size=1) as dense layers.

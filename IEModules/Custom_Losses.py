@@ -468,112 +468,112 @@ class AllBinaryFocalLoss(losses.Loss):
 #         return base
 
 
-@utils.register_keras_serializable()
-class SwitchingFocalLoss(losses.Loss):
-    def __init__(self, swap_epoch=SWAP_EPOCH, **shared_kwargs):
-        super().__init__(name="switching_focal_loss")
-        self.swap_epoch    = swap_epoch
-        self.shared_kwargs = shared_kwargs
-        self.switchable    = True
+# @utils.register_keras_serializable()
+# class SwitchingFocalLoss(losses.Loss):
+#     def __init__(self, swap_epoch=SWAP_EPOCH, **shared_kwargs):
+#         super().__init__(name="switching_focal_loss")
+#         self.swap_epoch    = swap_epoch
+#         self.shared_kwargs = shared_kwargs
+#         self.switchable    = True
 
-        # loss1 and loss2 can live here (so they're always defined)
-        self.loss1 = CustomBinaryFocalLoss(
-            **{**self.shared_kwargs,
-               "smoothing_as_correct": True,
-               "smoothing_multiplier": CORRECT_SMOOTHING_MULTIPLIER}
-        )
-        self.loss2 = CustomBinaryFocalLoss(
-            **{**self.shared_kwargs,
-               "smoothing_as_correct": False,
-               "smoothing_multiplier": INCORRECT_SMOOTHING_MULTIPLIER}
-        )
+#         # loss1 and loss2 can live here (so they're always defined)
+#         self.loss1 = CustomBinaryFocalLoss(
+#             **{**self.shared_kwargs,
+#                "smoothing_as_correct": True,
+#                "smoothing_multiplier": CORRECT_SMOOTHING_MULTIPLIER}
+#         )
+#         self.loss2 = CustomBinaryFocalLoss(
+#             **{**self.shared_kwargs,
+#                "smoothing_as_correct": False,
+#                "smoothing_multiplier": INCORRECT_SMOOTHING_MULTIPLIER}
+#         )
         
-        self.current_epoch = self.add_weight(
-            name="current_epoch",
-            shape=(),
-            dtype=tf.int32,
-            initializer="zeros",
-            trainable=False
-        )
+#         self.current_epoch = self.add_weight(
+#             name="current_epoch",
+#             shape=(),
+#             dtype=tf.int32,
+#             initializer="zeros",
+#             trainable=False
+#         )
 
-    # def build(self, input_shape):
-    #     # call super first so Keras knows we’re “built”
-    #     super().build(input_shape)
-    #     # now add a scalar weight on the same device as the rest of the model
-    #     self.current_epoch = self.add_weight(
-    #         name="current_epoch",
-    #         shape=(),
-    #         dtype=tf.int32,
-    #         initializer="zeros",
-    #         trainable=False
-    #     )
+#     # def build(self, input_shape):
+#     #     # call super first so Keras knows we’re “built”
+#     #     super().build(input_shape)
+#     #     # now add a scalar weight on the same device as the rest of the model
+#     #     self.current_epoch = self.add_weight(
+#     #         name="current_epoch",
+#     #         shape=(),
+#     #         dtype=tf.int32,
+#     #         initializer="zeros",
+#     #         trainable=False
+#     #     )
 
-    def call(self, y_true, y_pred):
-        return tf.cond(
-            tf.less(self.current_epoch, self.swap_epoch),
-            lambda: self.loss1(y_true, y_pred),
-            lambda: self.loss2(y_true, y_pred),
-        )
+#     def call(self, y_true, y_pred):
+#         return tf.cond(
+#             tf.less(self.current_epoch, self.swap_epoch),
+#             lambda: self.loss1(y_true, y_pred),
+#             lambda: self.loss2(y_true, y_pred),
+#         )
 
-    def get_config(self):
-        cfg = super().get_config()
-        cfg.update({
-            "swap_epoch": self.swap_epoch,
-            **self.shared_kwargs
-        })
-        return cfg
+#     def get_config(self):
+#         cfg = super().get_config()
+#         cfg.update({
+#             "swap_epoch": self.swap_epoch,
+#             **self.shared_kwargs
+#         })
+#         return cfg
 
-@utils.register_keras_serializable()
-class SwitchingBinaryCrossentropyLoss(losses.Loss):
-    def __init__(self, swap_epoch=SWAP_EPOCH, **shared_kwargs):
-        super().__init__(name="switching_binary_loss")
-        self.swap_epoch    = swap_epoch
-        self.shared_kwargs = shared_kwargs
-        self.switchable    = True
+# @utils.register_keras_serializable()
+# class SwitchingBinaryCrossentropyLoss(losses.Loss):
+#     def __init__(self, swap_epoch=SWAP_EPOCH, **shared_kwargs):
+#         super().__init__(name="switching_binary_loss")
+#         self.swap_epoch    = swap_epoch
+#         self.shared_kwargs = shared_kwargs
+#         self.switchable    = True
 
-        self.loss1 = AllBinaryFocalLoss(
-            **{**self.shared_kwargs,
-               "smoothing_as_correct": True,
-               "smoothing_multiplier": CORRECT_SMOOTHING_MULTIPLIER}
-        )
-        self.loss2 = AllBinaryFocalLoss(
-            **{**self.shared_kwargs,
-               "smoothing_as_correct": False,
-               "smoothing_multiplier": INCORRECT_SMOOTHING_MULTIPLIER}
-        )
+#         self.loss1 = AllBinaryFocalLoss(
+#             **{**self.shared_kwargs,
+#                "smoothing_as_correct": True,
+#                "smoothing_multiplier": CORRECT_SMOOTHING_MULTIPLIER}
+#         )
+#         self.loss2 = AllBinaryFocalLoss(
+#             **{**self.shared_kwargs,
+#                "smoothing_as_correct": False,
+#                "smoothing_multiplier": INCORRECT_SMOOTHING_MULTIPLIER}
+#         )
         
-        self.current_epoch = self.add_weight(
-            name="current_epoch",
-            shape=(),
-            dtype=tf.int32,
-            initializer="zeros",
-            trainable=False
-        )
+#         self.current_epoch = self.add_weight(
+#             name="current_epoch",
+#             shape=(),
+#             dtype=tf.int32,
+#             initializer="zeros",
+#             trainable=False
+#         )
 
-    # def build(self, input_shape):
-    #     super().build(input_shape)
-    #     self.current_epoch = self.add_weight(
-    #         name="current_epoch",
-    #         shape=(),
-    #         dtype=tf.int32,
-    #         initializer="zeros",
-    #         trainable=False
-    #     )
+#     # def build(self, input_shape):
+#     #     super().build(input_shape)
+#     #     self.current_epoch = self.add_weight(
+#     #         name="current_epoch",
+#     #         shape=(),
+#     #         dtype=tf.int32,
+#     #         initializer="zeros",
+#     #         trainable=False
+#     #     )
 
-    def call(self, y_true, y_pred):
-        return tf.cond(
-            tf.less(self.current_epoch, self.swap_epoch),
-            lambda: self.loss1(y_true, y_pred),
-            lambda: self.loss2(y_true, y_pred),
-        )
+#     def call(self, y_true, y_pred):
+#         return tf.cond(
+#             tf.less(self.current_epoch, self.swap_epoch),
+#             lambda: self.loss1(y_true, y_pred),
+#             lambda: self.loss2(y_true, y_pred),
+#         )
 
-    def get_config(self):
-        cfg = super().get_config()
-        cfg.update({
-            "swap_epoch": self.swap_epoch,
-            **self.shared_kwargs
-        })
-        return cfg
+#     def get_config(self):
+#         cfg = super().get_config()
+#         cfg.update({
+#             "swap_epoch": self.swap_epoch,
+#             **self.shared_kwargs
+#         })
+#         return cfg
 
 # @utils.register_keras_serializable()
 # class EpochUpdater(callbacks.Callback):

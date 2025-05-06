@@ -238,7 +238,7 @@ class ExperimentHandler:
     
     
     # Helper to merge history fragments
-    def _merge_histories(h1: callbacks.History, h2: callbacks.History):
+    def merge_histories(h1: callbacks.History, h2: callbacks.History):
         for k, v in h2.history.items():
             h1.history.setdefault(k, []).extend(v)
         return h1
@@ -258,12 +258,12 @@ class ExperimentHandler:
             running_hist = _load_running_history(history_path)
             start_unit = len(next(iter(running_hist.values()), []))
 
-            # Determine loss switching parameters
+            # Early rewarding and swap epoch
             early_rewarding = bool(row["Early Rewarding"])
-            swap_epoch = cfg.SWAP_EPOCH if early_rewarding else 0
+            swap_epoch = cfg.SWAP_EPOCH if early_rewarding else EPOCH_UNITS_PER_TRIAL
             total_units = EPOCH_UNITS_PER_TRIAL
 
-            # Load or build model
+            # Load or resume model
             ckpt_dir = trial_dir / "Checkpoints"
             model = None
             if self.resume_flag and (ckpt := latest_checkpoint(ckpt_dir)):
@@ -280,57 +280,96 @@ class ExperimentHandler:
             optimizer = Custom_Optimizers.AccumOptimizer(accum_steps=cfg.ACCUM_STEPS)
             metrics = Custom_Metrics.build_metrics(num_classes=5, thresh=0.5)
 
-            # Extract concrete losses
-            loss_attr = model.loss
-            # If switching loss, the build created nested losses on the loss object
-            if early_rewarding and hasattr(loss_attr, 'loss1') and hasattr(loss_attr, 'loss2'):
-                loss1 = loss_attr.loss1
-                loss2 = loss_attr.loss2
-            else:
-                loss1 = loss2 = model.loss
+            # Precompute smoothing and common kwargs
+            smoothing = str(row["Smoothing"]).lower()
+            background_removed = not bool(row["Background"])
+            base_kwargs = dict(
+                dominant_class_index=cfg.DOMINANT_CLASS_INDEX,
+                dominant_correct_multiplier=cfg.DOMINANT_CORRECT_MULTIPLIER,
+                dominant_incorrect_multiplier=cfg.DOMINANT_INCORRECT_MULTIPLIER,
+                other_class_true_positive_multiplier=cfg.OTHER_TP_MULTIPLIER,
+                other_class_false_negative_multiplier=cfg.OTHER_FN_MULTIPLIER,
+                other_class_false_positive_multiplier=cfg.OTHER_FP_MULTIPLIER,
+                other_class_true_negative_multiplier=cfg.OTHER_TN_MULTIPLIER,
+                background_removed=background_removed,
+                threshold=cfg.THRESHOLD,
+                focal_gamma=cfg.FOCAL_GAMMA,
+                focal_alpha=cfg.FOCAL_ALPHA,
+            )
+            # Static loss when not early_rewarding
+            if not early_rewarding:
+                if smoothing == "custom":
+                    BaseLoss = Custom_Losses.CustomBinaryFocalLoss
+                    base_kwargs.update(
+                        smoothing_as_correct=cfg.DEFAULT_SMOOTHING_AS_CORRECT,
+                        smoothing_multiplier=cfg.INCORRECT_SMOOTHING_MULTIPLIER,
+                    )
+                else:
+                    BaseLoss = Custom_Losses.AllBinaryFocalLoss
+                    base_kwargs.pop("threshold", None)
+                    base_kwargs.update(
+                        label_smoothing=cfg.LABEL_SMOOTHING if smoothing == "proper" else 0
+                    )
+                static_loss_fn = BaseLoss(**base_kwargs)
 
-
-
-            # Define a function to run a phase
-            def _run_phase(phase_loss, start, end, initial_epoch):
-                model.compile(optimizer=optimizer, loss=phase_loss, metrics=metrics)
-                phase_cbs = self._make_callbacks(row, start, trial_dir, model)
-                return model.fit(
-                    train_ds, val_ds,
-                    epochs=end,
-                    initial_epoch=initial_epoch,
-                    steps_per_epoch=STEPS_PER_EPOCH_UNIT,
-                    validation_steps=int(STEPS_PER_EPOCH_UNIT / 8),
-                    callbacks=phase_cbs,
-                    verbose=1,
-                )
-
-            # Load datasets once
+            # Load datasets
             train_ds, val_ds = self._load_datasets(row)
 
-            # Execute phases
-            if early_rewarding and swap_epoch < total_units:
-                print(f"\nTrial {trial_id:02d} • Phase 1: Epoch-Units 1–{swap_epoch}")
-                history1 = _run_phase(loss1, 0, swap_epoch, 0)
-                print(f"\nTrial {trial_id:02d} • Phase 2: Epoch-Units {swap_epoch+1}–{total_units}")
-                history2 = _run_phase(loss2, swap_epoch, total_units, swap_epoch)
-                # Merge into a single History-like object
-                history = _merge_histories(history1, history2)
-            else:
-                history = _run_phase(model.loss, start_unit, total_units, start_unit)
+            # Loop over each epoch-unit
+            for unit in range(start_unit, total_units):
+                print(f"Trial {trial_id:02d} • Epoch-Unit {unit+1}/{total_units}")
 
-            # Persist running history and checkpoint
-            _extend_history(running_hist, history.history)
-            _atomic_dump(running_hist, history_path)
+                # Select loss dynamically if early_rewarding
+                if early_rewarding:
+                    # reset kwargs per unit
+                    kwargs = base_kwargs.copy()
+                    if smoothing == "custom":
+                        BaseLoss = Custom_Losses.CustomBinaryFocalLoss
+                        if unit < swap_epoch:
+                            kwargs.update(
+                                smoothing_as_correct=True,
+                                smoothing_multiplier=cfg.CORRECT_SMOOTHING_MULTIPLIER,
+                            )
+                        else:
+                            kwargs.update(
+                                smoothing_as_correct=False,
+                                smoothing_multiplier=cfg.INCORRECT_SMOOTHING_MULTIPLIER,
+                            )
+                    else:
+                        BaseLoss = Custom_Losses.AllBinaryFocalLoss
+                        kwargs.pop("threshold", None)
+                        kwargs.update(
+                            label_smoothing=cfg.LABEL_SMOOTHING if smoothing == "proper" else 0
+                        )
+                    loss_fn = BaseLoss(**kwargs)
+                else:
+                    loss_fn = static_loss_fn
 
-            # End-of-trial cleanup
-            Helper_Functions.plot_train_val_curve(
-                history_object=type("H", (), {"history": running_hist})(),
-                training_target_variable="no_background_auc",
-            ).savefig(trial_dir / "train_val_curve.jpg")
-            model.save(trial_dir / "final_model.keras")
+                # Compile with same optimizer, new loss
+                model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
 
+                # Callbacks for this unit
+                cbs = self._make_callbacks(row, unit, trial_dir, model)
+
+                # Train one epoch-unit
+                history = model.fit(
+                    train_ds,
+                    validation_data=val_ds,
+                    epochs=unit+1,
+                    initial_epoch=unit,
+                    steps_per_epoch=STEPS_PER_EPOCH_UNIT,
+                    validation_steps=int(STEPS_PER_EPOCH_UNIT / 8),
+                    verbose=1,
+                    callbacks=cbs,
+                )
+
+                # Save running history
+                _extend_history(running_hist, history.history)
+                _atomic_dump(running_hist, history_path)
+
+        print("✅ All trials complete!")
         print("\n✅ All trials complete!")
+
 
     # ────────────────────────────────────────────────────────────────────
     def _prepare_trial_folder(self, num: int) -> Path:
@@ -410,9 +449,9 @@ class ExperimentHandler:
 
         model = Custom_Models.create_modular_dcnn_model(
             dilation_multiplier=dilation_mult,
-            use_local_attention=use_attention,
+            use_local_attention=False,
             use_long_range_attention=use_attention,
-            use_final_attention=use_attention,
+            use_final_attention=False,
             num_classes=num_classes
         )
         loss_fn = self._select_loss(row)
