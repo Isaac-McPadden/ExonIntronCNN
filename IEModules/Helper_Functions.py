@@ -8,6 +8,7 @@ import concurrent.futures as cf
 import random
 import re
 import json
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -106,3 +107,55 @@ def load_history_from_json(metadata: str, save_path: str = ""):
         history_dict = json.load(f)
     
     return history_dict
+
+
+def fabricate_vectors_for_f1(target_f1: float,
+                             length: int = 200,
+                             include_background: bool = True,
+                             focus_class: int = 1,
+                             seed: int | None = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Return y_true / y_pred matrices (shape = [length, num_classes]) whose
+    **weighted** CustomNoBackgroundF1Score equals `target_f1` exactly.
+    See full doc-string in previous message.
+    """
+    # -------------  parameter checks -------------
+    if not (0 < target_f1 <= 1):
+        raise ValueError("target_f1 must be in (0, 1].")
+    if focus_class not in range(1, 5):
+        raise ValueError("focus_class must be 1…4.")
+
+    rng         = np.random.default_rng(seed)
+    n_classes   = 5 if include_background else 4
+    tgt_col_idx = focus_class if include_background else focus_class-1
+
+    # ----------  pick a confusion‑matrix  ----------
+    for TP in range(1, length):
+        # Choose FN = 0   →   FP = (2·TP/F1) − 2·TP
+        FP = (2 * TP / target_f1) - 2 * TP
+        if FP.is_integer() and FP >= 0 and TP + FP <= length:
+            FP, FN = int(FP), 0
+            TN     = length - (TP + FP)
+            break
+    else:
+        raise RuntimeError("Increase `length` – cannot realise that F‑score.")
+
+    # ----------  materialise the rows  ----------
+    y_true = np.zeros((length, n_classes), dtype=np.float32)
+    y_pred = np.zeros_like(y_true)
+    rows   = rng.permutation(length)
+    k = 0
+    for _ in range(TP):
+        r = rows[k]; k += 1
+        y_true[r, tgt_col_idx] = 1
+        y_pred[r, tgt_col_idx] = 1
+    for _ in range(FP):
+        r = rows[k]; k += 1
+        if include_background:
+            y_true[r, 0] = 1
+        y_pred[r, tgt_col_idx] = 1
+    for _ in range(TN):
+        r = rows[k]; k += 1
+        if include_background:
+            y_true[r, 0] = 1
+    return y_true, y_pred

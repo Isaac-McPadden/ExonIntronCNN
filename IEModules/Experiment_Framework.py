@@ -171,6 +171,15 @@ def _atomic_dump(obj: Dict, path: Path):
     finally:
         if Path(tmp.name).exists():
             Path(tmp.name).unlink(missing_ok=True)
+            
+def list_all_checkpoints(ckpt_dir: Path) -> list[Path]:
+    """Return *.keras files newest‑‑>oldest by epoch number."""
+    epochs = {
+        int(m.group(1)): p
+        for p in ckpt_dir.glob("*.keras")
+        if (m := re.search(r"epoch[-_](\d+)", p.name))
+    }
+    return [epochs[e] for e in sorted(epochs, reverse=True)]   
 
 
 # ── Main handler ───────────────────────────────────────────────────────────────
@@ -266,10 +275,24 @@ class ExperimentHandler:
             # Load or resume model
             ckpt_dir = trial_dir / "Checkpoints"
             model = None
-            if self.resume_flag and (ckpt := latest_checkpoint(ckpt_dir)):
-                custom_objs = utils.get_custom_objects()
-                model = models.load_model(ckpt, compile=False, custom_objects=custom_objs)
-                self.resume_flag = False
+            if self.resume_flag:
+                for ckpt in list_all_checkpoints(ckpt_dir):
+                    try:
+                        print(f"🔄  Attempting to resume from {ckpt.name}")
+                        model = models.load_model(
+                            ckpt,
+                            compile=False,
+                            custom_objects=utils.get_custom_objects(),
+                        )
+                        print(f"✅  Successfully loaded {ckpt.name}")
+                        self.resume_flag = False          # only on success
+                        break
+                    except Exception as e:
+                        print(f"⚠️   Failed to load {ckpt.name}: {e}")
+                        # quarantine the broken file so we never touch it again
+                        bad = ckpt.with_suffix(ckpt.suffix + ".broken")
+                        ckpt.rename(bad)
+                        print(f"🗑️   Moved corrupt ckpt to {bad.name}")
 
             if model is None:
                 backend.clear_session()

@@ -9,6 +9,8 @@ import random
 import re
 import json
 import datetime
+from pathlib import Path
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -270,17 +272,47 @@ class EpochSetter(callbacks.Callback):
         
     def get_config(self):
         return {}
-# ===== Example Usage =====
+    
+    
+def _atomic_temp(target: Path) -> Path:
+    """
+    Create a closed temporary file in the *same* directory as *target*
+    and return its Path object.
+    """
+    fd, tmp = tempfile.mkstemp(
+        dir=target.parent,
+        prefix=f".{target.stem}_",
+        suffix=target.suffix
+    )
+    os.close(fd)                 # we only needed the name
+    return Path(tmp)
 
-# Set up the custom callback with a path for auto-saving state.
-# reduce_lr = StatefulReduceLROnPlateau(
-#     monitor='val_no_background_f1',
-#     factor=0.5,
-#     patience=5,
-#     min_lr=1e-6,
-#     verbose=1,
-#     state_save_filepath='reduce_lr_state.json'
-# )
+class AtomicModelCheckpoint(callbacks.ModelCheckpoint):
+    """Write a .keras checkpoint atomically at epoch‑end."""
+    def _save_model(self, epoch, logs=None):
+        final_path = Path(self.filepath)
+        tmp_path   = _atomic_temp(final_path)
+
+        # Redirect Keras to the temp file for this one call
+        original_fp, self.filepath = self.filepath, str(tmp_path)
+        try:
+            super()._save_model(epoch, logs)      # writes to tmp_path
+            tmp_path.replace(final_path)          # atomic swap
+        finally:
+            # Always restore .filepath so the callback keeps working
+            self.filepath = original_fp
+            # If anything went wrong, make sure we don’t leave junk
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+
+
+class AtomicBatchModelCheckpoint(AtomicModelCheckpoint,
+                                 BatchModelCheckpoint):
+    """Batch‑level checkpoint that is also atomic."""
+    def _save_model(self, epoch, batch, logs=None):
+        # AtomicModelCheckpoint already does the hard work;
+        # just forward the parameters it expects.
+        super()._save_model(epoch, logs)
 
 # Use the callback during training:
 # model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=..., callbacks=[reduce_lr, ...])
@@ -289,7 +321,7 @@ cleanup_cb = CleanupCallback()
 checkpoint_dir = experiment_folder / CHECKPOINT_SUBDIR
 checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-checkpoint_cb = callbacks.ModelCheckpoint(
+checkpoint_cb = AtomicModelCheckpoint(
     filepath=str(checkpoint_dir / CHECKPOINT_FILENAME),
     monitor=CHECKPOINT_MONITOR,
     mode=CHECKPOINT_MODE,
@@ -298,7 +330,7 @@ checkpoint_cb = callbacks.ModelCheckpoint(
     save_freq=CHECKPOINT_SAVE_FREQ,
 )
 
-batch_checkpoint_cb = BatchModelCheckpoint(
+batch_checkpoint_cb = AtomicBatchModelCheckpoint(
     filepath=str(checkpoint_dir / PREVAL_CHECKPOINT_FILENAME),
     steps_per_epoch=STEPS_PER_EPOCH_UNIT,
     monitor=PREVAL_CHECKPOINT_MONITOR,
