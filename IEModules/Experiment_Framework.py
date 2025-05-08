@@ -173,13 +173,15 @@ def _atomic_dump(obj: Dict, path: Path):
             Path(tmp.name).unlink(missing_ok=True)
             
 def list_all_checkpoints(ckpt_dir: Path) -> list[Path]:
-    """Return *.keras files newest‑‑>oldest by epoch number."""
-    epochs = {
-        int(m.group(1)): p
-        for p in ckpt_dir.glob("*.keras")
-        if (m := re.search(r"epoch[-_](\d+)", p.name))
-    }
-    return [epochs[e] for e in sorted(epochs, reverse=True)]   
+    """Return clean *.keras checkpoints newest → oldest by epoch number."""
+    epochs = {}
+    for p in ckpt_dir.glob("*.keras"):
+        # Skip leftovers from failed atomic swaps
+        if p.name.startswith(".") or "_partial_" in p.name:
+            continue
+        if (m := re.search(r"epoch[-_](\d+)", p.name)):
+            epochs[int(m.group(1))] = p
+    return [epochs[e] for e in sorted(epochs, reverse=True)]  
 
 
 # ── Main handler ───────────────────────────────────────────────────────────────
@@ -241,9 +243,14 @@ class ExperimentHandler:
         if not ckpt_dir.is_dir():
             return False
 
-        # any file that begins with 'epoch-010-val' and ends in '.keras'
+        # clean filenames only (no dot‑prefix, no _partial_)
         pattern = re.compile(fr"epoch-{EPOCH_UNITS_PER_TRIAL:03d}-val.*\.keras$")
-        return any(pattern.match(f.name) for f in ckpt_dir.iterdir())
+        return any(
+            pattern.match(f.name)
+            for f in ckpt_dir.iterdir()
+            if not (f.name.startswith(".") or "_partial_" in f.name)
+        )
+
     
     
     # Helper to merge history fragments
@@ -258,7 +265,7 @@ class ExperimentHandler:
         for _, row in self.trials_df.iterrows():
             trial_dir_check = self.experiment_dir / f"Trial_{row['Trial']:02d}"
             if self._trial_complete(trial_dir_check):
-                print(f"[Skip] Trial {row['Trial']:02d} is already complete.")
+                print(f"[Skip] Trial {row['Trial']:02d} is already complete.", flush=True)
                 continue
 
             trial_id = int(row["Trial"])
@@ -273,26 +280,32 @@ class ExperimentHandler:
             total_units = EPOCH_UNITS_PER_TRIAL
 
             # Load or resume model
-            ckpt_dir = trial_dir / "Checkpoints"
-            model = None
+            
             if self.resume_flag:
-                for ckpt in list_all_checkpoints(ckpt_dir):
-                    try:
-                        print(f"🔄  Attempting to resume from {ckpt.name}")
-                        model = models.load_model(
-                            ckpt,
-                            compile=False,
-                            custom_objects=utils.get_custom_objects(),
-                        )
-                        print(f"✅  Successfully loaded {ckpt.name}")
-                        self.resume_flag = False          # only on success
-                        break
-                    except Exception as e:
-                        print(f"⚠️   Failed to load {ckpt.name}: {e}")
-                        # quarantine the broken file so we never touch it again
-                        bad = ckpt.with_suffix(ckpt.suffix + ".broken")
-                        ckpt.rename(bad)
-                        print(f"🗑️   Moved corrupt ckpt to {bad.name}")
+                ckpt_dir = trial_dir / "Checkpoints"
+                model = None
+                skip_train_this_unit = False
+                try_resume = self.resume_flag
+                
+                if try_resume:
+                    for ckpt in list_all_checkpoints(ckpt_dir):
+                        try:
+                            print(f"🔄  Attempting to resume from {ckpt.name}", flush=True)
+                            model = models.load_model(
+                                ckpt,
+                                compile=False,
+                                custom_objects=utils.get_custom_objects(),
+                            )
+                            print(f"✅  Successfully loaded {ckpt.name}", flush=True)
+                            if "preval" in ckpt.name.lower():
+                                skip_train_this_unit = True
+                            break
+                        except Exception as e:
+                            print(f"⚠️   Failed to load {ckpt.name}: {e}", flush=True)
+                            # quarantine the broken file so we never touch it again
+                            bad = ckpt.with_suffix(ckpt.suffix + ".broken")
+                            ckpt.rename(bad)
+                            print(f"🗑️   Moved corrupt ckpt to {bad.name}", flush=True)
 
             if model is None:
                 backend.clear_session()
@@ -340,7 +353,7 @@ class ExperimentHandler:
 
             # Loop over each epoch-unit
             for unit in range(start_unit, total_units):
-                print(f"Trial {trial_id:02d} • Epoch-Unit {unit+1}/{total_units}")
+                print(f"Trial {trial_id:02d} • Epoch-Unit {unit+1}/{total_units}", flush=True)
 
                 # Select loss dynamically if early_rewarding
                 if early_rewarding:
@@ -373,6 +386,21 @@ class ExperimentHandler:
 
                 # Callbacks for this unit
                 cbs = self._make_callbacks(row, unit, trial_dir, model)
+                
+                if skip_train_this_unit and unit == start_unit:
+                    # 2️⃣ Just run validation once
+                    val_metrics = model.evaluate(
+                        val_ds,
+                        steps=int(STEPS_PER_EPOCH_UNIT/8),
+                        verbose=1,
+                        return_dict=True,
+                    )
+                    # 3️⃣ Fake a minimal History fragment so _extend_history works
+                    fragment = {f"val_{k}": [v] for k, v in val_metrics.items()}
+                    _extend_history(running_hist, fragment)
+                    _atomic_dump(running_hist, history_path)
+                    skip_train_this_unit = False    # reset
+                    continue
 
                 # Train one epoch-unit
                 history = model.fit(
@@ -547,7 +575,8 @@ class ExperimentHandler:
         lr_state_dir.mkdir(parents=True, exist_ok=True) 
         lr_state_path = trial_dir / LR_STATE_SAVE_SUBDIR / LR_STATE_SAVE_FILENAME
         for cb in cbs:
-            if isinstance(cb, Custom_Callbacks.BatchModelCheckpoint):
+            if isinstance(cb,  (Custom_Callbacks.BatchModelCheckpoint, 
+                                Custom_Callbacks.AtomicBatchModelCheckpoint)):
                 cb.filepath = str(trial_dir / cfg.CHECKPOINT_SUBDIR
                                             / cfg.PREVAL_CHECKPOINT_FILENAME)
             elif isinstance(cb, callbacks.ModelCheckpoint):
@@ -557,6 +586,8 @@ class ExperimentHandler:
                 cb.state_save_filepath = lr_state_path
                 if lr_state_path.exists() and self.resume_flag and unit_idx == 0:
                     cb.load_state_from_file(lr_state_path)
+            if isinstance(cb, Custom_Callbacks.TidyCheckpointNames):
+                cb.ckpt_dir = Path(trial_dir / cfg.CHECKPOINT_SUBDIR)
         return cbs
 
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 import sys
 import os
@@ -11,6 +13,8 @@ import json
 import datetime
 from pathlib import Path
 import tempfile
+import shutil
+import errno
 
 import numpy as np
 import pandas as pd
@@ -172,6 +176,8 @@ class BatchModelCheckpoint(callbacks.ModelCheckpoint):
             self._save_model(epoch=self._cur_epoch,
                              batch=batch,
                              logs=logs or {})
+    def _save_model(self, epoch, batch, logs=None):
+        super()._save_model(epoch, batch, logs)
 
 
 class StatefulReduceLROnPlateau(callbacks.ReduceLROnPlateau):
@@ -274,45 +280,122 @@ class EpochSetter(callbacks.Callback):
         return {}
     
     
+# ►► 1. helper – create a *closed* temporary file *next* to the final file
 def _atomic_temp(target: Path) -> Path:
     """
-    Create a closed temporary file in the *same* directory as *target*
-    and return its Path object.
+    Return a Path to an empty temporary file living in `target.parent`.
+    The file descriptor is closed immediately so it's renamable on Windows.
     """
     fd, tmp = tempfile.mkstemp(
         dir=target.parent,
-        prefix=f".{target.stem}_",
+        prefix=f".{target.stem}_partial_",
         suffix=target.suffix
     )
-    os.close(fd)                 # we only needed the name
+    os.close(fd)
     return Path(tmp)
 
-class AtomicModelCheckpoint(callbacks.ModelCheckpoint):
-    """Write a .keras checkpoint atomically at epoch‑end."""
-    def _save_model(self, epoch, logs=None):
+
+# ►► 2. mix‑in – transparently wrap `_save_model` in “write‑then‑rename”
+class _AtomicMixin:
+    """
+    Add atomic‑write semantics to any Keras *Checkpoint callback.
+
+    Works with every current Keras signature because we forward *args/**kwargs
+    verbatim to the parent implementation.
+    """
+
+    def _save_model(self, *args, **kwargs):                      # pylint: disable=arguments-differ
         final_path = Path(self.filepath)
         tmp_path   = _atomic_temp(final_path)
 
-        # Redirect Keras to the temp file for this one call
         original_fp, self.filepath = self.filepath, str(tmp_path)
         try:
-            super()._save_model(epoch, logs)      # writes to tmp_path
-            tmp_path.replace(final_path)          # atomic swap
+            super()._save_model(*args, **kwargs)                 # 1️⃣ write to temp
+            for attempt in range(5):                             # 2️⃣ robust replace
+                try:
+                    tmp_path.replace(final_path)                 # atomic on POSIX+NTFS
+                    break                                        # success
+                except PermissionError as e:
+                    if attempt == 4:                             # give up after 5 tries
+                        raise
+                    time.sleep(0.2)                              # brief back‑off
         finally:
-            # Always restore .filepath so the callback keeps working
             self.filepath = original_fp
-            # If anything went wrong, make sure we don’t leave junk
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
+            tmp_path.unlink(missing_ok=True)                     # clean up stray temp
 
 
-class AtomicBatchModelCheckpoint(AtomicModelCheckpoint,
-                                 BatchModelCheckpoint):
-    """Batch‑level checkpoint that is also atomic."""
-    def _save_model(self, epoch, batch, logs=None):
-        # AtomicModelCheckpoint already does the hard work;
-        # just forward the parameters it expects.
-        super()._save_model(epoch, logs)
+# ►► 3. concrete classes to use in your callback list
+class AtomicModelCheckpoint(_AtomicMixin, callbacks.ModelCheckpoint):
+    """
+    Ordinary *post‑validation* checkpoint that is written atomically.
+    Inherit exactly the same constructor / behaviour as keras.callbacks.ModelCheckpoint.
+    """
+    pass
+
+
+class AtomicBatchModelCheckpoint(_AtomicMixin, callbacks.ModelCheckpoint):
+    """
+    Save exactly once per epoch – after the final training batch, before
+    validation – with atomic write‑to‑temp behaviour.
+    """
+    def __init__(self, filepath: str | Path, *, steps_per_epoch: int, **kwargs):
+        # keep Keras happy: save_freq must be 'epoch' or int → we pick 'epoch'
+        super().__init__(filepath=str(filepath),
+                         save_freq="epoch",
+                         **kwargs)
+        self.steps_per_epoch = steps_per_epoch
+        self._cur_epoch = None
+
+    # track current epoch
+    def on_epoch_begin(self, epoch, logs=None):
+        self._cur_epoch = epoch
+
+    # fire once at the last train batch
+    def on_train_batch_end(self, batch, logs=None):
+        if (batch + 1) == self.steps_per_epoch:
+            self._save_model(epoch=self._cur_epoch, batch=batch, logs=logs)
+
+    # silence the normal post‑epoch save to avoid duplicates
+    def on_epoch_end(self, epoch, logs=None):
+        pass
+
+
+@utils.register_keras_serializable()
+class TidyCheckpointNames(callbacks.Callback):
+    def __init__(self, ckpt_dir, **kwargs):
+        super().__init__(**kwargs)
+        self.ckpt_dir = Path(ckpt_dir)
+
+    _junk = re.compile(
+        r"""
+        ^\.                                   |   # leading dot
+        (?:_partial)?_[0-9a-z_]{6,15}(?=\.keras$)    # trailing slug
+        """,
+        re.X,
+)
+
+    def _clean(self, name: str) -> str:
+        return self._junk.sub("", name)
+
+    def on_epoch_end(self, epoch, logs=None):
+        for p in self.ckpt_dir.glob("*.keras"):
+            clean = self._clean(p.name)
+            if clean != p.name:
+                target = p.with_name(clean)
+                if not target.exists():          # don’t clobber            '
+                    p.rename(target)
+                    
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({"ckpt_dir": str(self.ckpt_dir)})  # convert Path → str
+        return cfg
+
+    @classmethod
+    def from_config(cls, config):
+        # turn the string back into a Path object
+        config = dict(config)
+        config["ckpt_dir"] = Path(config["ckpt_dir"])
+        return cls(**config)
 
 # Use the callback during training:
 # model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=..., callbacks=[reduce_lr, ...])
@@ -362,6 +445,7 @@ reduce_lr_cb = StatefulReduceLROnPlateau(
     state_save_filepath=lr_state_path
 )
 
+tidy_cb = TidyCheckpointNames(checkpoint_dir)
 # Running this in the experiment so trial number is part of the name
 # tb_log_dir = "./Logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # tensorboard_cb = callbacks.TensorBoard(log_dir=tb_log_dir, histogram_freq=1)
@@ -372,9 +456,10 @@ reduce_lr_cb = StatefulReduceLROnPlateau(
 # Open a browser and go to http://localhost:6006
 
 CALLBACKS = [
+    batch_checkpoint_cb,
     cleanup_cb,
     checkpoint_cb,
     early_stopping_cb,
     reduce_lr_cb,
-    batch_checkpoint_cb,
+    tidy_cb,
     ]
