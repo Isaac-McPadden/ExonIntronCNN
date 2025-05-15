@@ -284,7 +284,7 @@ class AllBinaryFocalLoss(losses.Loss):
             y_true = y_true * (1.0 - self.label_smoothing) + (self.label_smoothing / num_classes)
         
         # Compute the focal loss elementwise.
-        p_t = tf.where(tf.equal(y_true, tf.constant(1.0, dtype=y_true.dtype)), y_pred, 1 - y_pred)
+        p_t = y_true * y_pred + (1.0 - y_true) * (1.0 - y_pred)
         focal_loss = - self.focal_alpha * tf.pow(1 - p_t, self.focal_gamma) * tf.math.log(p_t)
         
         num_classes = tf.shape(y_true)[1]

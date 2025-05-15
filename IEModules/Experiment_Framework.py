@@ -173,15 +173,36 @@ def _atomic_dump(obj: Dict, path: Path):
             Path(tmp.name).unlink(missing_ok=True)
             
 def list_all_checkpoints(ckpt_dir: Path) -> list[Path]:
-    """Return clean *.keras checkpoints newest → oldest by epoch number."""
-    epochs = {}
+    """
+    Return clean *.keras checkpoints newest → oldest *preferring* the
+    post‑validation file when both a “preval” and a “val_*.keras” exist.
+    """
+    latest: dict[int, Path] = {}
     for p in ckpt_dir.glob("*.keras"):
-        # Skip leftovers from failed atomic swaps
         if p.name.startswith(".") or "_partial_" in p.name:
             continue
         if (m := re.search(r"epoch[-_](\d+)", p.name)):
-            epochs[int(m.group(1))] = p
-    return [epochs[e] for e in sorted(epochs, reverse=True)]  
+            epoch = int(m.group(1))
+            is_preval = "preval" in p.name.lower()
+            cur = latest.get(epoch)
+            if cur is None:                     # first file for this epoch
+                latest[epoch] = p
+            else:
+                cur_is_preval = "preval" in cur.name.lower()
+                # 1️⃣ Prefer the *post‑validation* file
+                if cur_is_preval and not is_preval:
+                    latest[epoch] = p
+                # 2️⃣ Tie‑break on modification time
+                elif is_preval == cur_is_preval and p.stat().st_mtime > cur.stat().st_mtime:
+                    latest[epoch] = p
+    # newest → oldest
+    return [latest[e] for e in sorted(latest, reverse=True)] 
+
+def _history_len(hist: dict[str, list]) -> int:
+    if not hist:
+        return 0
+    # use the *shortest* column – avoids the +1 off‑by‑one
+    return min(len(v) for v in hist.values())
 
 
 # ── Main handler ───────────────────────────────────────────────────────────────
@@ -272,7 +293,7 @@ class ExperimentHandler:
             trial_dir = self._prepare_trial_folder(trial_id)
             history_path = trial_dir / "history_full.json"
             running_hist = _load_running_history(history_path)
-            start_unit = len(next(iter(running_hist.values()), []))
+            start_unit = start_unit = _history_len(running_hist)
 
             # Early rewarding and swap epoch
             early_rewarding = bool(row["Early Rewarding"])

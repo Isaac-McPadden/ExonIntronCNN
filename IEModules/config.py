@@ -25,30 +25,30 @@ target_training_variable = "no_background_auc"
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-# EPOCH_UNIT_SIZE = int(0.8*1182630/5) # The approximate number of samples in a single unaugmented dataset
-# EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
-# DEFAULT_BATCH_SIZE = 28
-# # STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
-# SEED = 42
-# PHYSICAL_BATCH_SIZE = 2
-# ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
-# STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE // PHYSICAL_BATCH_SIZE)
-
-# ── Test Constants ──────────────────────────────────────────────────────────────────
-EPOCH_UNIT_SIZE = 100
+EPOCH_UNIT_SIZE = int(0.8*1182630/5) # The approximate number of samples in a single unaugmented dataset
 EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
-DEFAULT_BATCH_SIZE = 20
+DEFAULT_BATCH_SIZE = 28
 # STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
 SEED = 42
 PHYSICAL_BATCH_SIZE = 2
 ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
 STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE // PHYSICAL_BATCH_SIZE)
-'''
-Default Vars
-'''
-experiment_data_folder = DATA_DIR / "PROGRAM TEST 01"
-experiment_folder = MODEL_DIR / "PROGRAM TEST 01"
-target_training_variable = "no_background_auc"
+
+# ── Test Constants ──────────────────────────────────────────────────────────────────
+# EPOCH_UNIT_SIZE = 100
+# EPOCH_UNITS_PER_TRIAL = 10          # <- Each trial always runs exactly 10 units
+# DEFAULT_BATCH_SIZE = 20
+# # STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE/DEFAULT_BATCH_SIZE) # Becomes steps_per_epoch
+# SEED = 42
+# PHYSICAL_BATCH_SIZE = 2
+# ACCUM_STEPS = DEFAULT_BATCH_SIZE // PHYSICAL_BATCH_SIZE
+# STEPS_PER_EPOCH_UNIT = int(EPOCH_UNIT_SIZE // PHYSICAL_BATCH_SIZE)
+# '''
+# Default Vars
+# '''
+# experiment_data_folder = DATA_DIR / "PROGRAM TEST 01"
+# experiment_folder = MODEL_DIR / "PROGRAM TEST 01"
+# target_training_variable = "no_background_auc"
 
 # ── Model Parameters ──────────────────────────────────────────────────────────────────
 # Have to set this up in the experiment handler as they change every trial
@@ -94,7 +94,7 @@ FOCAL_ALPHA = 0.25                    # Balance parameter alpha
 INCORRECT_SMOOTHING_MULTIPLIER = 1.1  # For smooothing as correct is False, Scales the effect of a custom smoothed label
 CORRECT_SMOOTHING_MULTIPLIER = 0.5    # For smoothing as correct is True, Scales the effect of a custom smoothed label
 DEFAULT_SMOOTHING_AS_CORRECT = False  # If True, a high prediction on a smoothed label is rewarded; else, punished
-LABEL_SMOOTHING = 0.1                 # Proper label smoothing value.  
+LABEL_SMOOTHING = 0.02                # Proper label smoothing value.  
 SWAP_EPOCH = 3                        # Number of rewarding epochs
 
 
